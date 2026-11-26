@@ -47,6 +47,7 @@ class Ctx:
     band: tuple | None = None                         # the patient's single age band, if known
     hide_location: bool = False                       # small group: district + PIN prefix hidden too
     rare: object = None                               # RareConditions for this release (A5 defence)
+    district: str | None = None                       # this record's own district, if it states one
 
     def age_text(self, age: int) -> str:
         if self.band and self.band[0] <= age <= self.band[1]:

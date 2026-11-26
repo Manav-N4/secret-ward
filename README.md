@@ -104,6 +104,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `bash scripts/check_all.sh [kit] [--full]` | the whole routine: pipeline, contract, self-check, traps, attacker, (held-out), submission check |
 | `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw. On data other than the default practice set pass `--input` and `--truth` (and `--registry`/`--facts`) |
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
+| `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
 
 ## Measured on the practice data (`check_dev.py`)
@@ -112,17 +113,18 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 |---|---|---|
 | PII pieces leaked | 2718 / 3230 (84.1%) | 0 / 3230 |
 | Canaries found | 4 / 4 | 0 / 4 |
-| Medical values kept | 4855 / 4855 | 4829 / 4855 (99.5%; 26 districts hidden on purpose for the smallest groups) |
-| Linking precision / recall | 0 / 0 | 1.00 / 0.99 (was 0.82: disease durations like "x 8 yrs" were misread as ages) |
+| Medical values kept | 4855 / 4855 | 4826 / 4855 (99.4%; 29 districts hidden on purpose for the smallest groups) |
+| Temporal intervals (`scripts/score.py`) | n/a | 15286 / 15286 date pairs exact |
+| Linking precision / recall | 0 / 0 | 1.00 / 1.00 (was 0.82: disease durations like "x 8 yrs" were misread as ages; a hospital name was read as a patient name) |
 | Runtime | ~2 s | ~2 s (linear: 8,000 synthetic files with 40,000 distinct people in 18 s, 274 MB) |
 
 Privacy, measured with `scripts/attack.py` (our approximation of the official arena; lower is better):
 
 | Attack | Raw input | v0.1 | v0.2 (one band per patient + local k-anonymity) |
 |---|---|---|---|
-| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.033 |
+| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.031 |
 | A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
-| A5 targeted attack success | 100% | 51.4% | 48.6% |
+| A5 targeted attack success | 100% | 51.4% | 51.2% (complete patient clusters give the attacker fuller profiles) |
 
 Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569;
 every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00.
