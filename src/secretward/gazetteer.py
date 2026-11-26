@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import re
 
-from indic_transliteration import sanscript
-from indic_transliteration.sanscript import transliterate
-
 from .rules import GENERIC_TOKENS, SAFE_WORDS
+from .translit import deva_to_latin
 
 DEVA = re.compile(r"[ऀ-ॿ]")
 TOKEN = re.compile(r"[A-Za-zऀ-ॿ][A-Za-zऀ-ॿ'’]*")
@@ -23,8 +21,7 @@ def skeleton(token: str) -> str:
     """Cross-script phonetic key: मोहम्मद, Mohammad, Mohd -> 'mhmd'. Coarse on purpose."""
     t = token.strip(".'’").lower()
     if DEVA.search(t):
-        t = transliterate(t, sanscript.DEVANAGARI, sanscript.ITRANS)
-        t = t.replace(".N", "n").replace("M", "n").lower()   # anusvara / chandrabindu ~ n
+        t = deva_to_latin(t).lower()
         t = t[:-1] if t.endswith("a") and len(t) > 3 else t
     t = ALIASES.get(t, t)
     t = re.sub(r"[^a-z]", "", t)
