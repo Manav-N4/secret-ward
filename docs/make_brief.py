@@ -91,12 +91,12 @@ USP = [
 RESULTS = [
     ("Personal data leaked (overall / Devanagari / Hinglish)", "0 / 3230 (0.0% / 0.0% / 0.0%); canaries 0 / 4; "
      "also 0% in file names, keys, headers, metadata, base64"),
-    ("Medical values kept", "4829 / 4855 (99.5%); the 26 lost are districts hidden on purpose for the smallest groups"),
-    ("Linking precision / recall / F0.5", "1.00 / 0.99 / 1.00; 0 wrong merges; homonym traps kept apart"),
+    ("Medical values kept", "4826 / 4855 (99.4%), lost = districts hidden on purpose for the smallest groups; date intervals: 15286 / 15286 pairs exact"),
+    ("Linking precision / recall / F0.5", "1.00 / 1.00 / 1.00; 0 wrong merges; homonym traps kept apart"),
     ("Patients pinned to ONE registry person", "45 / 48 on raw input → 1 / 48 on our output"),
-    ("Our attacker, ours vs raw (lower is better)", "A3 record linkage 0.67 → 0.033; A4 profile re-ID 93.8% → 6.2% "
-     "(kit reference 16.7%); A5 targeted 100% → 48.6%"),
-    ("Data we did not tune on", "no registration tables: 3 / 2263 leaked, recall 0.97; free text only: 0 / 569; "
+    ("Our attacker, ours vs raw (lower is better)", "A3 record linkage 0.67 → 0.031; A4 profile re-ID 93.8% → 6.2% "
+     "(kit reference 16.7%); A5 targeted 100% → 51.2%"),
+    ("Data we did not tune on", "no registration tables: 3 / 2263 leaked, recall 0.99; free text only: 0 / 569; "
      "every CSV header renamed to unseen wording: 0 / 3230, precision 1.00"),
     ("Run time / peak memory", "2.0 s / 27 MB for 200 files; linear scaling: 8,000 synthetic files with new people in "
      "every file in 18 s / 274 MB (limits 15 min / 4 GB); identical on Python 3.9-3.13; byte-identical repeats; offline"),
@@ -105,9 +105,9 @@ RESULTS = [
 TRADEOFF = (
     "<b>Why these settings.</b> Each was chosen by measurement. 10-year bands: on the registry, gender + 5-year "
     "band + district leaves 101/240 people unique, 10-year bands 50/240. Hiding district for the smallest groups "
-    "costs 26 values (0.5%) but halves A4 (12.5% to 6.2%) and lowers A5 (0.571 to 0.486). We also built "
+    "costs 26 values (0.5%) but halves A4 (12.5% to 6.2%) and lowers A5. Villages are generalised to their district (truthful, already in the record). We also built "
     "rare-diagnosis generalisation to ICD chapters and <b>switched it off</b>: for N = 1..5 it cost 2.1-6.1% of "
-    "medical values and left A5 flat at 0.486. Two independently built attackers (ours and QA's) agree.")
+    "medical values and left A5 flat. Two independently built attackers (ours and QA's) agree.")
 
 SECURITY = (
     "Assume breach: no raw or intermediate data is ever written to disk (everything stays in memory), so "
@@ -126,7 +126,7 @@ TESTING = (
     "matching (now linear); and a second, independent attacker that confirms our A5 conclusion.")
 
 LIMITS = [
-    "<b>Residual risk, A5 (targeted attack) about 49%:</b> not rare-disease leakage. Of the rare conditions, rabies "
+    "<b>Residual risk, A5 (targeted attack) about 51%:</b> not rare-disease leakage. Of the rare conditions, rabies "
     "is already safe and the kala-azar patient is found purely through exact length of stay + hospital. The rest is "
     "exact length of stay and profile consistency on moderately common conditions (TB, typhoid, diabetes: 6-9 "
     "patients each). Stay length must stay exact for clinical integrity, so this is an accepted trade-off; larger "
@@ -134,7 +134,7 @@ LIMITS = [
     "Names in free text with no label, relation, trigger, honorific, log structure or gazetteer match can still "
     "slip (3 / 2263 when registration tables are removed). A small CRF trained on our own synthetic data is the "
     "next step.",
-    "The phonetic key is coarse; rare transliterations may not link (recall 0.99, not 1.00).",
+    "The phonetic key is coarse; rare transliterations may not link on unseen data (practice recall 1.00).",
     "XML, PDF and images are quarantined, not cleaned. Our attacker approximates the official arena from its "
     "published spec; the official numbers will differ.",
 ]

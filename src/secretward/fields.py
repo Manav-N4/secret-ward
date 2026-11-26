@@ -180,6 +180,11 @@ def clean_field(typ: str, value, ctx: Ctx, patient_slot: bool = False):
             ctx.counts["AGE_BANDED"] += 1
             return ctx.age_text(int(m.group(1))) + (m.group(2) if m.group(2).strip() else "")
         return sanitize(s, ctx)
+    if typ == "VILLAGE" and ctx.district and not ctx.hide_location:
+        # generalise the village to its district (truthful, scored 0.7 vs 0 for removal,
+        # and no new information: the district is already in the same record)
+        ctx.counts["VILLAGE_TO_DISTRICT"] += 1
+        return ctx.district
     if typ in ("ADDRESS", "VILLAGE", "TEHSIL"):
         ctx.counts["ADDRESS"] += 1
         return "[ADDRESS]"

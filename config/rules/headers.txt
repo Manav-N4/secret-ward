@@ -17,8 +17,8 @@ PATIENTID	uhid,mrn,patientid,patientref,=regno,registrationno,crno,hospitaluhid,
 DOB	dob,dateofbirth,birthdate,janm,janmtithi,=birth
 AGE	=age,umar,aayu,आयु,उम्र,ageyears,=ageyrs
 GENDER	gender,=sex,ling
-ADDRESS	address,street,pata,=line,houseno,=house,makan,landmark,locality,mohalla
 VILLAGE	village,gaon,=gram,=city,=town
+ADDRESS	address,street,pata,=line,houseno,=house,makan,landmark,locality,mohalla
 TEHSIL	tehsil,taluka,=block
 DISTRICT	district,jila,zila,distt
 PIN	=pin,=zip,postal,postalcode,pincode,zipcode

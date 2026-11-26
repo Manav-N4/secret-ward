@@ -35,6 +35,9 @@ ABHA_IN_TEXT = re.compile(r"(?<![0-9])\d{2}-\d{4}-\d{4}-\d{4}(?![0-9])")
 GENDER_IN_TEXT = re.compile(r"(?i)(?:/\s*|sex\s*[:\-]\s*)(M|F|male|female)\b")
 
 
+DEVA_CHARS = re.compile(r"[\u0900-\u097F]")
+
+
 class Quarantine(Exception):
     pass
 
@@ -494,7 +497,9 @@ class Pipeline:
         """Join first/last name leaves that sit under the same parent into one name."""
         by_parent: dict[tuple, list[str]] = {}
         for t, v, p in pairs:
-            if t == "NAME" and isinstance(v, str) and v.strip():
+            # only person-shaped values: an Organization "name" such as "Sanjeevani
+            # Multispeciality Hospital" must not become the patient's name (it blocked links)
+            if t == "NAME" and isinstance(v, str) and v.strip() and (_is_person(v) or DEVA_CHARS.search(v)):
                 by_parent.setdefault(p[:-1], []).append(v)
         out = []
         for parent in sorted(by_parent, key=str):
@@ -611,8 +616,11 @@ class Pipeline:
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=d.delimiter, lineterminator="\n")
         w.writerow(new_header)
+        dist_col = d.col_types.index("DISTRICT") if "DISTRICT" in d.col_types else -1
         for u, row in zip(d.units, body):
             ctx = self.ctx_for(d, u)
+            if 0 <= dist_col < len(row) and row[dist_col].strip():
+                ctx.district = row[dist_col].strip()
             out = []
             for j, v in enumerate(row):
                 typ = d.col_types[j] if j < len(d.col_types) else "TEXT"
@@ -627,12 +635,15 @@ class Pipeline:
     def sanitize_json(self, d: Doc) -> str:
         units = {u.loc: u for u in d.units}
         file_ctx = self.ctx_for(d, units.get("doc"))
+        if "doc" in units:
+            file_ctx.district = self._district_in(d.data, d, ())
         used = {}
 
         def clean(o, path, ctx):
             loc = "/" + "/".join(str(x).replace("~", "~0").replace("/", "~1") for x in path)
             if loc in units and units[loc] is not None and loc != "/":
                 ctx = self.ctx_for(d, units[loc])
+                ctx.district = self._district_in(o, d, path)
                 used[loc] = ctx
             if isinstance(o, dict):
                 url = str(o.get("url", "")).lower()
@@ -668,6 +679,13 @@ class Pipeline:
                 self.counts.update(ctx.counts)
         self.counts.update(file_ctx.counts)
         return json.dumps(result, ensure_ascii=False, indent=2) + "\n"
+
+    def _district_in(self, o, d: Doc, path: tuple):
+        """The district stated inside one JSON record (or a nested object of it), if any."""
+        for p, v in walk_leaves(o, path):
+            if d.path_types.get(schema_path(p)) == "DISTRICT" and isinstance(v, str) and v.strip():
+                return v.strip()
+        return None
 
     def sanitize_text(self, d: Doc) -> str:
         u = d.units[0]
