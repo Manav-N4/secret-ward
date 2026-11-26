@@ -53,7 +53,10 @@ class RareConditions:
 
     def add(self, cond: str, code: str | None, who: str) -> None:
         c = norm_cond(cond)
-        if len(c) < 4:
+        # only real condition names: starts with a letter, enough letters, balanced brackets
+        # (a fragment such as "fever (a01.0" would otherwise garble the text it is replaced in)
+        if (len(re.sub(r"[^a-z]", "", c)) < 4 or not c[:1].isalpha()
+                or c.count("(") != c.count(")") or ICD.search(c.upper())):
             return
         self.patients.setdefault(c, set()).add(who)
         if code and c not in self.codes:

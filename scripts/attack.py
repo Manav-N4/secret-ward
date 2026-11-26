@@ -288,11 +288,15 @@ def registry_attack(ev: Ev, registry, ref_year=2026) -> dict:
     return {rid: w / total for rid, w in weights.items()}
 
 
+PATHS = {}
+
+
 def run(kit: Path, root: Path, mode: str):
     """mode 'ours': read our output; mode 'raw': read the original input (upper bound)."""
-    truth = json.loads((kit / "dev/truth/truth.json").read_text(encoding="utf-8"))
-    registry = list(csv.DictReader(open(kit / "dev/attacker/registry.csv", encoding="utf-8")))
-    facts = [json.loads(l) for l in open(kit / "dev/attacker/known_facts.jsonl", encoding="utf-8")]
+    truth = json.loads(Path(PATHS.get("truth", kit / "dev/truth/truth.json")).read_text(encoding="utf-8"))
+    registry = list(csv.DictReader(open(PATHS.get("registry", kit / "dev/attacker/registry.csv"), encoding="utf-8")))
+    facts = [json.loads(l) for l in open(PATHS.get("facts", kit / "dev/attacker/known_facts.jsonl"), encoding="utf-8")]
+    raw_input = Path(PATHS.get("input", kit / "dev/input"))
     pt2rid = {pt: p["rid"] for pt, p in truth["patients"].items()}
     vocab = Vocab(registry)
     if mode == "ours":
@@ -310,7 +314,7 @@ def run(kit: Path, root: Path, mode: str):
                 continue
             path = root / o
         else:
-            path = kit / "dev/input" / rel
+            path = raw_input / rel
         if not path.is_file():
             continue
         for loc, u in f["units"].items():
@@ -413,8 +417,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--kit", required=True)
     ap.add_argument("--output", required=True)
+    ap.add_argument("--input", help="raw input the output was made from (default: kit dev/input)")
+    ap.add_argument("--truth", help="truth.json matching --input (default: kit dev/truth/truth.json)")
+    ap.add_argument("--registry", help="attacker registry.csv (default: kit dev/attacker/registry.csv)")
+    ap.add_argument("--facts", help="attacker known_facts.jsonl (default: kit dev/attacker/known_facts.jsonl)")
     a = ap.parse_args()
     kit, out = Path(a.kit), Path(a.output)
+    for k in ("input", "truth", "registry", "facts"):
+        if getattr(a, k):
+            PATHS[k] = getattr(a, k)
+    if a.input and not a.truth:
+        print("warning: --input given without --truth; scores will not match the data", file=sys.stderr)
     raw = run(kit, kit, "raw")
     ours = run(kit, out, "ours")
     print("attack                         raw       ours    ours/raw")

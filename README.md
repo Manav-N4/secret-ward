@@ -78,7 +78,10 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
   diagnoses seen in very few patients to their ICD-10 chapter (`rare_condition_max_patients`). On the
   practice data it cost 1.7-3.3% of medical values and did not lower the targeted attack (0.49 -> 0.48-0.49):
   the attacker wins through common conditions combined with profile consistency and the exact length of
-  stay, which the rules require us to keep. We keep it off and report A5 as our known residual risk.
+  stay, which the rules require us to keep. Re-measured after the linking fix, N = 1..5: A5 stays at
+  0.486 while medical values fall to 97.5-92.9%. Coarser k-anonymity (k up to 8, location hidden for
+  groups under 5) also leaves A5 at 0.486. In a ~50-patient release, condition + gender alone already
+  narrows typhoid or TB to one person. We keep it off and report A5 as our known residual risk.
 * **Replacements:** typed placeholders (`[NAME]`, `[PHONE]` …), never fake names (a fake name can
   collide with a real person and count as a leak).
 
@@ -98,7 +101,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | Script | What it measures |
 |---|---|
 | `bash scripts/check_all.sh [kit] [--full]` | the whole routine: pipeline, contract, self-check, traps, attacker, (held-out), submission check |
-| `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw |
+| `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw. On data other than the default practice set pass `--input` and `--truth` (and `--registry`/`--facts`) |
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
 
