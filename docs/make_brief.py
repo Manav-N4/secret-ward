@@ -97,7 +97,7 @@ RESULTS = [
     ("Our attacker, ours vs raw (lower is better)", "A3 record linkage 0.67 → 0.031; A4 profile re-ID 93.8% → 6.2% "
      "(kit reference 16.7%); A5 targeted 100% → 51.2%"),
     ("Data we did not tune on", "no registration tables: 3 / 2263 leaked, recall 0.99; free text only: 0 / 569; "
-     "every CSV header renamed to unseen wording: 0 / 3230, precision 1.00"),
+     "headers renamed to unseen wording: 0 / 3230; new phone, ID, DOB, label formats: 0 / 3230, linking 1.00 / 1.00"),
     ("Run time / peak memory", "2.0 s / 27 MB for 200 files; linear scaling: 8,000 synthetic files with new people in "
      "every file in 18 s / 274 MB (limits 15 min / 4 GB); identical on Python 3.9-3.13; byte-identical repeats; offline"),
 ]

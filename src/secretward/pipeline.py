@@ -31,6 +31,7 @@ MAX_DEPTH = 200
 UUIDISH = re.compile(r"^(?:urn:uuid:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^urn:uuid:", re.I)
 PHONE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])(?:\+?91[\s-]?)?0?[6-9]\d{4}[\s-]?\d{5}(?![0-9])")
 AADHAAR_IN_TEXT = re.compile(r"(?<![0-9])\d{4}[\s-]?\d{4}[\s-]?\d{4}(?![0-9])")
+PHONE_LOOSE = re.compile(r"(?<![A-Za-z0-9])\+?\d[\d \-()]{9,18}\d(?![0-9])")
 ABHA_IN_TEXT = re.compile(r"(?<![0-9])\d{2}-\d{4}-\d{4}-\d{4}(?![0-9])")
 GENDER_IN_TEXT = re.compile(r"(?i)(?:/\s*|sex\s*[:\-]\s*)(M|F|male|female)\b")
 
@@ -525,6 +526,8 @@ class Pipeline:
                 dg = re.sub(r"\D", "", s)
                 if len(dg) == 12:
                     ev.keys.add("AA:" + dg)
+                    if dg.startswith("91") and dg[2] in "6789":
+                        ev.keys.add("PH:" + dg[2:])   # "91XXXXXXXXXX" may be a phone with country code
             elif typ == "ABHA":
                 dg = re.sub(r"\D", "", s)
                 if len(dg) == 14:
@@ -563,6 +566,11 @@ class Pipeline:
                 ev.keys.add("AB:" + re.sub(r"\D", "", m.group(0)))
             for m in PHONE_IN_TEXT.finditer(t):
                 ev.keys.add("PH:" + re.sub(r"\D", "", m.group(0))[-10:])
+            for m in PHONE_LOOSE.finditer(t):          # "+91 (98765) 43210", "9876-543-210"
+                dg = re.sub(r"\D", "", m.group(0))
+                core = dg[2:] if len(dg) == 12 and dg.startswith("91") else dg[1:] if len(dg) == 11 and dg.startswith("0") else dg
+                if len(core) == 10 and core[0] in "6789":
+                    ev.keys.add("PH:" + core)
             for m in LABEL_RX.finditer(t):
                 span = _trim_span(m.group(2))
                 if span and _is_person(span):
