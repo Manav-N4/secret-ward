@@ -13,3 +13,12 @@ mareez ka naam
 नाम
 पेशेंट
 patient
+pt
+patient details
+rogi
+rogi ka naam
+mareez
+रोगी
+रोगी का नाम
+मरीज़
+मरीज
