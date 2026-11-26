@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment variables and secrets
+.env
+.env.*
+*.key
+secrets/
+
+# Generated outputs
+output/
+outputs/
+sanitized/
+quarantine/
+reports/
+tmp/
+temp/
+
+# Dataset and sensitive data
+data/
+dev/
+truth.json
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
