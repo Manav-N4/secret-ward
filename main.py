@@ -68,9 +68,12 @@ def run(inp: Path, out: Path) -> int:
         "entities": {k: c[k] for k in sorted(c)},
         "timing": {"seconds": round(time.monotonic() - t0, 2)},
         "resources": {"peak_rss_mb": peak_rss_mb()},
+        # quarantined inputs are kept only as AES-256-GCM ciphertext in quarantine/<sha256>.swv
+        "quarantine_vault": {"cipher": "AES-256-GCM, per-file HKDF-SHA256 keys from RAKSHA_SECRET",
+                             "files_encrypted": p.vaulted},
     }
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(f"files {len(files)} sanitized {n_san} quarantined {len(files) - n_san} records {len(records)}")
+    print(f"files {len(files)} sanitized {n_san} quarantined {len(files) - n_san} (encrypted {p.vaulted}) records {len(records)}")
 
     # Fail LOUDLY, never silently: a crash inside our own code quarantines a file (fail-safe),
     # but if that happens to many files the release is broken and must not look successful.

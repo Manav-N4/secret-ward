@@ -21,6 +21,9 @@ grep -q "CONTRACT OK" /tmp/_sw_contract || fail=1
 echo "== 3. practice self-check"
 "$PY" "$KIT/check_dev.py" --output "$OUT" | grep -E "PERSONAL DATA|by language|by hiding|CANARIES|MEDICAL|LINKING|RAW COPIES"
 
+echo "== 3b. encrypted quarantine vault"
+RAKSHA_SECRET=practice "$PY" scripts/vault_check.py --input "$KIT/dev/input" --output "$OUT" --check || fail=1
+
 echo "== 4. trap tests"
 "$PY" tests/test_traps.py | tail -1 | tee /tmp/_sw_traps
 grep -q " 0 failures" /tmp/_sw_traps || fail=1
