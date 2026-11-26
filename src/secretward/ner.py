@@ -96,9 +96,17 @@ class NameTagger:
         return sum(self.w.get(f, 0.0) for f in feats)
 
     def spans(self, text: str, extra_medical=frozenset()) -> list[tuple[int, int]]:
-        """Character spans of predicted names (consecutive positive tokens merged)."""
+        """Character spans of predicted names. Each line is judged on its own: a note line
+        starts fresh, so "...gaye.\nSunil Das ko" reads like "Sunil Das ko" at file start."""
         if not self.w:
             return []
+        out, pos = [], 0
+        for line in text.split("\n"):
+            out += [(pos + a, pos + b) for a, b in self._line_spans(line, extra_medical)]
+            pos += len(line) + 1
+        return out
+
+    def _line_spans(self, text: str, extra_medical=frozenset()) -> list[tuple[int, int]]:
         tk = tokens(text)
         words = [t for t, _, _ in tk]
         if sum(1 for t in words if WORDLIKE.match(t)) < MIN_WORDS:
