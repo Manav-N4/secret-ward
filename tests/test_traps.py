@@ -74,7 +74,15 @@ def run():
         if out != header:
             bad += 1
             print("HEADER", repr(header), "->", repr(out))
-    print(f"{len(CASES)} cases + 5 headers, {bad} failures")
+    # identifiers stored as JSON NUMBERS under unknown keys; medical numbers stay numbers
+    from secretward.fields import clean_field
+    for value, should_change in ((902115225016, True), (91234567890123, True), (9876543210, True),
+                                 (150000, False), (2024, False), (98.6, False), (1700000000, False)):
+        out = clean_field("TEXT", value, Ctx(gaz=gaz, shift=10))
+        if (out != value) != should_change:
+            bad += 1
+            print("NUMBER", repr(value), "->", repr(out))
+    print(f"{len(CASES)} cases + 5 headers + 7 numbers, {bad} failures")
     return bad
 
 

@@ -122,7 +122,8 @@ SECURITY = (
     "only; an exception hook prints only the error type; report reasons are fixed codes.")
 
 TESTING = (
-    "<b>How we tested.</b> 22 meaning-trap cases + header round-trips, three held-out variants, our attacker, the "
+    "<b>How we tested.</b> 34 meaning-trap cases + header and number round-trips, five held-out variants, 40 Hinglish "
+    "notes, a format-mutation harness that rewrites the answer key too (8 seeds, 0 leaks each), our attacker, the "
     "kit validators, and independent QA (Aditya): a clean-machine run that caught a Python 3.9 incompatibility "
     "silently quarantining every file, village leaks under a renamed header and damaged relation markers; a "
     "side-channel scan of stdout, stderr, TMPDIR, HOME, report, records and file names (0 hits; the same scanner "

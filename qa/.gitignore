@@ -1,0 +1,5 @@
+# Generated / large QA artifacts: never commit (paths relative to qa/)
+.venv/
+out/
+mutated/
+logs/
