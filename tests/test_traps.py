@@ -34,6 +34,14 @@ CASES = [
     ("Ward/Bed: Ward 4 (Medicine) / Bed 24", ["Ward 4 (Medicine) / Bed 24"], []),
     ("Attendant (W/o Mukesh Pandey) informed about diet.", ["Attendant (W/o", "informed about diet"], ["Mukesh", "Pandey"]),
     ("Relation: S/o-W/o-D/o", ["S/o-W/o-D/o"], []),
+    # Kavita (PR #13): lowercase names after strong cues
+    ("name: rahul sharma, age 34", ["age"], ["rahul", "sharma"]),
+    ("s/o ramesh kumar, village visit", [], ["ramesh"]),
+    ("smt. sunita devi admitted", ["admitted"], ["sunita"]),
+    # ...but lowercase medical text must survive
+    ("Presenting complaints: C/O fever for 8 days", ["Presenting complaints:", "C/O fever"], []),
+    ("History: No K/C/O DM/HTN. c/o dysuria x 2 days", ["DM/HTN", "c/o dysuria"], []),
+    ("Treated conservatively. patient stable.", ["Treated conservatively", "patient stable"], []),
     ("मकान नं. 32, जामा मस्जिद के पीछे, तहसील नवाबगंज", [], ["जामा मस्जिद के पीछे", "32"]),
 ]
 
