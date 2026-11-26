@@ -24,7 +24,7 @@ from .privacy import age_band, pin_prefix
 from .rules import (DOCTOR_TITLES, HON_AFTER, HON_BEFORE, LABELS_NAME, RELATIONS, SAFE_WORDS,
                     TRIGGERS)
 
-L = r"[A-Z][a-zA-Z'’]*\.?"                       # one Latin name token (Title or CAPS)
+L = r"[A-Za-z][a-zA-Z'’]*\.?"                       # one Latin name token (Title or CAPS)
 LATIN_SPAN = rf"{L}(?: {L}){{0,3}}"
 DV = r"[ऀ-ॿ]+"
 DEVA_SPAN = rf"{DV}(?: {DV}){{0,3}}"
@@ -64,7 +64,10 @@ def _is_person(span: str) -> bool:
         return False
     if any(t.lower() in SAFE_WORDS for t in toks):
         return False
-    return all(t[:1].isupper() or DEVA.search(t) for t in toks)
+    return all(
+        (t[:1].isupper() or t.islower() or DEVA.search(t))
+        for t in toks
+    )
 
 
 def _replace_span(ctx: Ctx, kind: str, patient: bool = False) -> str:
