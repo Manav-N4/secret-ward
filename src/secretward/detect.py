@@ -75,7 +75,10 @@ def _is_person(span: str) -> bool:
         return False                              # a lone letter ("W" of W/o, "D" of D/o) is not a person
     if any(t.lower() in SAFE_WORDS for t in toks):
         return False
-    return all(t[:1].isupper() or DEVA.search(t) for t in toks)
+    return all(
+        (t[:1].isupper() or t.islower() or DEVA.search(t))
+        for t in toks
+    )
 
 
 def _replace_span(ctx: Ctx, kind: str, patient: bool = False) -> str:
