@@ -13,7 +13,7 @@ AADHAAR	aadhaar,aadhar,=uid,aadhaarno
 ABHA	abha,healthid,abhano
 PAN	=pan,panno,payerpan
 OTHERID	policy,pmjay,insurance,claim,=bill,billno,cardno,ticket,=ipd,ipdno,admno,admissionno,visitid,=visit_id
-PATIENTID	uhid,mrn,patientid,patientref,=regno,registration,crno,hospitaluhid,=reg,patient_id
+PATIENTID	uhid,mrn,patientid,patientref,=regno,registrationno,crno,hospitaluhid,=reg,patient_id
 DOB	dob,dateofbirth,birthdate,janm,janmtithi,=birth
 AGE	=age,umar,aayu,आयु,उम्र,ageyears,=ageyrs
 GENDER	gender,=sex,ling

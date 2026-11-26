@@ -115,7 +115,8 @@ Privacy, measured with `scripts/attack.py` (our approximation of the official ar
 | A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
 | A5 targeted attack success | 100% | 51.4% | 49.0% |
 
-Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569.
+Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569;
+every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00.
 
 ## Known limitations
 

@@ -269,24 +269,36 @@ class Pipeline:
         """Pass 1b: a TEXT column whose values are mostly places learned from OTHER files is
         a village column, whatever its header says ("Gram/Shehar", "Basti", ...)."""
         known = {p.lower() for p in self.gaz.places}
-        if not known:
-            return
+        names = set(self.gaz.latin_tokens)
 
-        def mostly_places(vals) -> bool:
+        def mostly(vals, pool) -> bool:
             vals = [v.strip().lower() for v in vals if isinstance(v, str) and v.strip()]
-            return len(vals) >= 2 and sum(v in known for v in vals) / len(vals) >= 0.5
+            return bool(pool) and len(vals) >= 2 and sum(v in pool for v in vals) / len(vals) >= 0.5
+        changed = False
         for d in self.docs:
             if d.kind == "csv":
                 for j, t in enumerate(d.col_types):
-                    if t == "TEXT" and mostly_places([r[j] for r in d.data[1:] if j < len(r)]):
+                    col = [r[j] for r in d.data[1:] if j < len(r)]
+                    if t == "TEXT" and mostly(col, known):
                         d.col_types[j] = "VILLAGE"
+                    elif t == "TEXT" and mostly(col, names):
+                        d.col_types[j] = "NAME"          # one-word first/last name columns
+                        for v in col:
+                            harvest_value("NAME", v, self.gaz)
+                        changed = True
+                # a name column right after a Relation column holds the RELATIVE's name
+                for j in range(1, len(d.col_types)):
+                    if d.col_types[j] == "NAME" and d.col_types[j - 1] == "RELATION" and hint_type(d.data[0][j]) is None:
+                        d.col_types[j] = "RELNAME"
             elif d.kind == "json":
                 groups: dict = {}
                 for p, v in walk_leaves(d.data):
                     groups.setdefault(schema_path(p), []).append(v)
                 for sp, vals in groups.items():
-                    if d.path_types.get(sp) == "TEXT" and mostly_places(vals):
+                    if d.path_types.get(sp) == "TEXT" and mostly(vals, known):
                         d.path_types[sp] = "VILLAGE"
+        if changed:
+            self.gaz.compile()
 
     def _resolve_conventions(self) -> None:
         votes: dict[str, Counter] = {}
@@ -345,6 +357,7 @@ class Pipeline:
                 u = Unit(uid=f"{d.rel}#doc", loc="doc")
                 self._evidence(u.ev, [], [d.data])
                 d.units.append(u)
+        self._drop_multi_patient_bridges()
         all_units = [(u.uid, u.ev) for d in self.docs for u in d.units]
         clusters = Linker(all_units).run()
         ages: dict[str, list[int]] = {}
@@ -356,6 +369,35 @@ class Pipeline:
                     ages.setdefault(u.cluster, []).extend(u.ev.ages)
         self.cluster_bands = {k: cluster_band(v) for k, v in ages.items()}
         self._k_anonymity()
+
+    def _drop_multi_patient_bridges(self) -> None:
+        """A record carrying several DIFFERENT patient IDs of one hospital (an index, a ward
+        list, a bulk export summary) describes many people. Using it to link would glue those
+        people into one pseudonym, the worst error in this task. Such records keep no
+        linking keys (they get patient: null)."""
+        def prefix(k: str) -> str:
+            m = re.match(r"ID:([A-Z]+)", k)
+            return m.group(1) if m else ""
+        patient_prefixes = set()
+        for d in self.docs:
+            if d.kind == "csv":
+                for j, t in enumerate(d.col_types):
+                    if t == "PATIENTID":
+                        for r in d.data[1:]:
+                            if j < len(r) and norm_id(r[j]):
+                                patient_prefixes.add(prefix("ID:" + norm_id(r[j])))
+            elif d.kind == "json":
+                for p, v in walk_leaves(d.data):
+                    if d.path_types.get(schema_path(p)) == "PATIENTID" and isinstance(v, (str, int)) and norm_id(str(v)):
+                        patient_prefixes.add(prefix("ID:" + norm_id(str(v))))
+        patient_prefixes.discard("")
+        for d in self.docs:
+            for u in d.units:
+                per = Counter(prefix(k) for k in u.ev.keys if k.startswith("ID:"))
+                phones = sum(1 for k in u.ev.keys if k.startswith("PH:"))
+                if any(n > 1 for pfx, n in per.items() if pfx in patient_prefixes) or phones > 3:
+                    u.ev.keys = set()
+                    self.counts["MULTI_PATIENT_RECORDS"] += 1
 
     def _k_anonymity(self) -> None:
         """Local generalisation: coarsen only patients in small (gender, band, district) groups.

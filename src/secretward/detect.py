@@ -237,7 +237,8 @@ ADDR_PARTS = re.compile(
     r"(?i)(?<![A-Za-z])(?:h\.?\s?no\.?|house(?:\s*no\.?)?|makan\s*no\.?|flat|plot)\s*[:\-]?\s*[\w/-]+"
     r"|(?<![A-Za-z])(?:gram|village|vill\.?|mohalla|mohalla:|ward\s+\d+,|tehsil|teh\.?|post|p\.o\.)\s*[:\-]?\s*(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)"
     r"|(?<![A-Za-z])(?:near|opp\.?|opposite|behind|beside)\s+(?:[A-Za-z]+\s){0,3}[A-Za-z]+"
-    r"|(?:ग्राम|गांव|गाँव|मोहल्ला|तहसील|मकान\s*नं\.?)\s*[:\-]?\s*[ऀ-ॿ\d]+(?:\s[ऀ-ॿ]+)?")
+    r"|(?:ग्राम|गांव|गाँव|मोहल्ला|तहसील|मकान\s*नं\.?)\s*[:\-]?\s*[ऀ-ॿ\d]+(?:\s[ऀ-ॿ]+)?"
+    r"|(?:[ऀ-ॿ]+\s){1,3}के\s+(?:पास|पीछे|सामने|बगल\s+में|बगल)")   # Hindi landmarks: "... के पीछे"
 
 
 def clean_address(text: str, ctx: Ctx) -> str:

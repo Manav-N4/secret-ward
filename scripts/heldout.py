@@ -9,6 +9,8 @@ variants remove the sources our runtime gazetteer learns names from, which is wh
   no_registration registration/ removed: no clean patient tables to learn names from
   free_text_only  only notes/, prescriptions/, discharge/ and lab/*.txt: names must be
                   found from context alone
+  renamed_headers every CSV/TSV header renamed to wording our rules have never seen
+                  (Gram/Shehar, Sampark Sutra, Pehchan Sankhya ...): detection must use content
 
 For each variant we build a matching subset of truth.json, run main.py, then the kit's
 check_dev.py, and print one comparable line.
@@ -18,6 +20,7 @@ Usage: python scripts/heldout.py --kit ../Secret-Wards-ToolKit
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -37,7 +40,43 @@ VARIANTS = {
 }
 
 
-def run_variant(kit: Path, name: str, keep, work: Path) -> str:
+# Unseen header wording for the "renamed_headers" variant. These live ONLY here, never in
+# config/rules: the point is to test content-based detection, not to learn these names.
+UNSEEN_HEADERS = {
+    "patient name": "Rogi ka Vivran", "patient_name": "Rogi", "naam": "Poora Vivran", "firstname": "Pehla",
+    "lastname": "Kul", "city": "Gram/Shehar", "village/mohalla": "Basti", "gaon": "Thikana Gaon",
+    "mobile": "Sampark Sutra", "mobile no": "Doorbhash", "phone": "Sampark", "address": "Rihayish",
+    "pata": "Rihayish Vivran", "street": "Gali", "relative name": "Parijan", "guardian": "Sanrakshak",
+    "pita/pati ka naam": "Abhibhavak", "aadhaar no": "Pehchan Sankhya", "aadhar": "Pehchan",
+    "abha no": "Swasthya Khata", "dob": "Paidaish", "janm tithi": "Paidaish Din", "tehsil": "Pargana",
+    "pin": "Dak Sankhya", "zip": "Dak Sankhya", "pin code": "Dak Code", "email": "E-Daak",
+    "uhid": "Aspatal Kram", "patientid": "Kram Sankhya", "reg no": "Panjikaran",
+}
+
+
+def rename_headers(raw: bytes, suffix: str) -> bytes:
+    import csv
+    import io
+    text = None
+    for enc in ("utf-8-sig", "utf-16", "cp1252"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeError:
+            continue
+    if text is None:
+        return raw
+    delim = "\t" if suffix == ".tsv" or text.count("\t") > text.count(",") else ","
+    rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=delim))
+    if not rows:
+        return raw
+    rows[0] = [UNSEEN_HEADERS.get(h.strip().lower(), h) for h in rows[0]]
+    buf = io.StringIO()
+    csv.writer(buf, delimiter=delim, lineterminator="\n").writerows(rows)
+    return buf.getvalue().encode("utf-8")
+
+
+def run_variant(kit: Path, name: str, keep, work: Path, transform=None) -> str:
     src = kit / "dev"
     truth = json.loads((src / "truth/truth.json").read_text(encoding="utf-8"))
     base = work / name
@@ -48,7 +87,12 @@ def run_variant(kit: Path, name: str, keep, work: Path) -> str:
         if keep(rel):
             dest = base / "input" / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src / "input" / rel, dest)
+            raw = (src / "input" / rel).read_bytes()
+            f = dict(f)
+            if transform and dest.suffix.lower() in (".csv", ".tsv") and raw.strip():
+                raw = transform(raw, dest.suffix.lower())
+                f["sha256"] = hashlib.sha256(raw).hexdigest()
+            dest.write_bytes(raw)
             files[rel] = f
     sub = dict(truth)
     sub["files"] = files
@@ -85,6 +129,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         for name, keep in VARIANTS.items():
             print(run_variant(kit, name, keep, Path(tmp)))
+        print(run_variant(kit, "renamed_headers", lambda rel: True, Path(tmp), rename_headers))
     return 0
 
 
