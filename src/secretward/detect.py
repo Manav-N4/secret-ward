@@ -24,7 +24,7 @@ from .privacy import age_band, band_text, pin_prefix
 from .rules import (DOCTOR_TITLES, GENERIC_TOKENS, HON_AFTER, HON_BEFORE, LABELS_NAME, RELATIONS, SAFE_WORDS,
                     TRIGGERS)
 
-L = r"[A-Z][a-zA-Z'’]*\.?"                       # one Latin name token (Title or CAPS)
+L = r"[A-Z][a-zA-Z'’]*\.?(?!/)"                  # one Latin name token (Title or CAPS); "W/o" is not a name
 LATIN_SPAN = rf"{L}(?: {L}){{0,3}}"
 DV = r"[ऀ-ॿ]+"
 DEVA_SPAN = rf"{DV}(?: {DV}){{0,3}}"
@@ -70,6 +70,8 @@ def _is_person(span: str) -> bool:
     toks = [t.strip(".,:") for t in span.split()]
     if not toks or len(toks) > 4:
         return False
+    if all(len(t) < 2 for t in toks):
+        return False                              # a lone letter ("W" of W/o, "D" of D/o) is not a person
     if any(t.lower() in SAFE_WORDS for t in toks):
         return False
     return all(t[:1].isupper() or DEVA.search(t) for t in toks)
@@ -374,6 +376,21 @@ def clean_names(text: str, ctx: Ctx) -> str:
     text = GEN_AFTER.sub("[NAME]", text)
     text = GEN_BEFORE.sub("[NAME]", text)
     return text
+
+
+# ---------------------------------------------------------------------------- headers
+def sanitize_header(text: str, ctx: Ctx) -> str:
+    """Column headers and similar labels: remove only real identifiers (known names, IDs,
+    phones). Free-text context rules (relations, triggers, honorifics) would mangle a
+    header such as "S/o-W/o-D/o" or "Patient's Name"."""
+    if not text:
+        return text
+    t = normalize(text)
+    t = clean_ids(t, ctx)
+    t = clean_digits(t, ctx)
+    t, n = ctx.gaz.rx_latin.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
+    t, n = ctx.gaz.rx_deva.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
+    return t
 
 
 # ---------------------------------------------------------------------------- entry point

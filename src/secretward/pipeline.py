@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import dates
-from .detect import AGE_PATTERNS, ID_TOKEN, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
+from .detect import AGE_PATTERNS, ID_TOKEN, sanitize_header, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
 from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
 from .link import Evidence, Linker, name_key, norm_gender, norm_id
@@ -605,7 +605,7 @@ class Pipeline:
     def sanitize_csv(self, d: Doc) -> str:
         header, body = d.data[0], d.data[1:]
         hctx = Ctx(gaz=self.gaz, conv=d.conv)
-        new_header = [sanitize(h, hctx) for h in header]
+        new_header = [sanitize_header(h, hctx) for h in header]
         has_pid = "PATIENTID" in d.col_types
         first_name = d.col_types.index("NAME") if "NAME" in d.col_types else -1
         buf = io.StringIO()
