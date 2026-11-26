@@ -76,10 +76,11 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
   (adds no identifying power beyond district on the practice data).
 * **Rare conditions (A5 defence, measured, shipped off):** `src/secretward/conditions.py` can generalise
   diagnoses seen in very few patients to their ICD-10 chapter (`rare_condition_max_patients`). On the
-  practice data it cost 1.7-3.3% of medical values and did not lower the targeted attack (0.49 -> 0.48-0.49):
+  practice data it cost 2.1-6.1% of medical values (N=1..5) and did not lower the targeted attack:
   the attacker wins through common conditions combined with profile consistency and the exact length of
   stay, which the rules require us to keep. Re-measured after the linking fix, N = 1..5: A5 stays at
-  0.486 while medical values fall to 97.5-92.9%. Coarser k-anonymity (k up to 8, location hidden for
+  0.486 while medical values fall to 97.9-93.9% (after the fragment-guard fix). QA's independently built
+  attacker agrees: A5 flat for every N from 0 to 5. Coarser k-anonymity (k up to 8, location hidden for
   groups under 5) also leaves A5 at 0.486. In a ~50-patient release, condition + gender alone already
   narrows typhoid or TB to one person. We keep it off and report A5 as our known residual risk.
 * **Replacements:** typed placeholders (`[NAME]`, `[PHONE]` …), never fake names (a fake name can

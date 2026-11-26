@@ -98,17 +98,16 @@ RESULTS = [
      "(kit reference 16.7%); A5 targeted 100% → 48.6%"),
     ("Data we did not tune on", "no registration tables: 3 / 2263 leaked, recall 0.97; free text only: 0 / 569; "
      "every CSV header renamed to unseen wording: 0 / 3230, precision 1.00"),
-    ("Run time / peak memory", "2.0 s / 27 MB for 200 files (limits 15 min / 4 GB); identical on Python 3.9-3.13; "
-     "byte-identical on repeat runs; offline"),
+    ("Run time / peak memory", "2.0 s / 27 MB for 200 files; linear scaling: 8,000 synthetic files with new people in "
+     "every file in 18 s / 274 MB (limits 15 min / 4 GB); identical on Python 3.9-3.13; byte-identical repeats; offline"),
 ]
 
 TRADEOFF = (
     "<b>Why these settings.</b> Each was chosen by measurement. 10-year bands: on the registry, gender + 5-year "
     "band + district leaves 101/240 people unique, 10-year bands 50/240. Hiding district for the smallest groups "
     "costs 26 values (0.5%) but halves A4 (12.5% to 6.2%) and lowers A5 (0.571 to 0.486). We also built "
-    "rare-diagnosis generalisation to ICD chapters and <b>switched it off</b>: it cost 2.5-7% of medical values "
-    "and left A5 at 0.486, because A5 wins through common conditions plus gender, and through the exact length "
-    "of stay, which the rules require us to keep.")
+    "rare-diagnosis generalisation to ICD chapters and <b>switched it off</b>: for N = 1..5 it cost 2.1-6.1% of "
+    "medical values and left A5 flat at 0.486. Two independently built attackers (ours and QA's) agree.")
 
 SECURITY = (
     "Assume breach: no raw or intermediate data is ever written to disk (everything stays in memory), so "
@@ -119,15 +118,19 @@ SECURITY = (
     "by name; renamed files get a keyed tag. Quarantined files never reach sanitized/.")
 
 TESTING = (
-    "<b>How we tested.</b> 22 meaning-trap cases + header round-trips, three held-out variants, the attacker, the "
-    "kit validators, and an independent clean-machine QA run (Aditya) that caught three real bugs before "
-    "submission: a Python 3.9 incompatibility that silently quarantined every file, village leaks under a renamed "
-    "header, and relation markers (W/o) damaged by the name detector.")
+    "<b>How we tested.</b> 22 meaning-trap cases + header round-trips, three held-out variants, our attacker, the "
+    "kit validators, and independent QA (Aditya): a clean-machine run that caught a Python 3.9 incompatibility "
+    "silently quarantining every file, village leaks under a renamed header and damaged relation markers; a "
+    "side-channel scan of stdout, stderr, TMPDIR, HOME, report, records and file names (0 hits; the same scanner "
+    "finds all 4 canaries and 1,278 identifiers in the raw input); a scaling test that exposed quadratic name "
+    "matching (now linear); and a second, independent attacker that confirms our A5 conclusion.")
 
 LIMITS = [
-    "A5 (targeted attack) stays near 49% on the practice data: in a ~50-patient release, a common condition plus "
-    "gender, or an exact stay length, can single someone out. Larger releases dilute this; removing it would "
-    "break clinical utility.",
+    "<b>Residual risk, A5 (targeted attack) about 49%:</b> not rare-disease leakage. Of the rare conditions, rabies "
+    "is already safe and the kala-azar patient is found purely through exact length of stay + hospital. The rest is "
+    "exact length of stay and profile consistency on moderately common conditions (TB, typhoid, diabetes: 6-9 "
+    "patients each). Stay length must stay exact for clinical integrity, so this is an accepted trade-off; larger "
+    "releases dilute it.",
     "Names in free text with no label, relation, trigger, honorific, log structure or gazetteer match can still "
     "slip (3 / 2263 when registration tables are removed). A small CRF trained on our own synthetic data is the "
     "next step.",
