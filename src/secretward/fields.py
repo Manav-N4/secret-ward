@@ -24,6 +24,9 @@ AADHAAR_V = re.compile(r"^(?:\d{4}[\s-]?\d{4}[\s-]?\d{4}|[Xx*]{4}[\s-]?[Xx*]{4}[
 ABHA_V = re.compile(r"^\d{2}-?\d{4}-?\d{4}-?\d{4}$")
 PIN_V = re.compile(r"^[1-8]\d{5}$")
 AGE_V = re.compile(r"^\s*(\d{1,3})\s*([^\d]*)$")
+ID_FULL = re.compile(r"^[A-Za-z]{1,6}(?:[-/][A-Za-z]{1,4})*[-/]?(?:\d{1,4}[-/])*\d{5,}$")
+ADDR_MARK = re.compile(r"(?i)\b(?:h\.?\s?no|house|makan|near|opp\.?|mohalla|tehsil|distt)\b|मकान|तहसील|जिला|के\s+(?:पास|पीछे|सामने|बगल)")
+YEAR = re.compile(r"(?:19|20)\d{2}")
 
 
 def key_tokens(key: str) -> tuple[list[str], str]:
@@ -63,6 +66,18 @@ def value_type(values: list[str]) -> str | None:
     if share(lambda v: bool(PIN_V.match(v))) >= 0.8:
         return "PIN"
     uniq = len(set(vals)) / len(vals)
+    if share(lambda x: bool(REL_PREFIX.match(x)) and len(x.split()) >= 2) >= 0.5:
+        return "RELNAME_LIKE"
+    if len(vals) >= 2 and uniq >= 0.8 and share(lambda x: bool(ID_FULL.match(x))) >= 0.8:
+        return "IDLIKE"
+    if share(lambda x: bool(ADDR_MARK.search(x))) >= 0.6:
+        return "ADDRESS_LIKE"
+    years = [int(m.group(0)) for x in vals for m in [YEAR.search(x)] if m and dates.looks_like_date(x)]
+    if len(years) >= 3 and len(years) >= 0.8 * len(vals):
+        ys = sorted(years)
+        if ys[len(ys) // 2] < 2012 and ys[-1] - ys[0] >= 10:
+            return "DOB_DATES"
+        return "DATES"
     if len(vals) >= 3 and share(place_like) >= 0.6:
         return "PLACE"
     if len(vals) >= 3 and uniq >= 0.6 and share(lambda v: _is_person(v) and not v.lower().startswith("dr")
@@ -87,6 +102,8 @@ def classify(key: str, values: list, path: tuple = ()) -> str:
         path_toks.update(key_tokens(str(p))[0])
     if h == "NAME" and path_toks & NONPERSON_PATH:
         h = None
+    if h == "PATIENTID" and v in ("DATES", "DOB_DATES"):
+        h = None                                  # "Registration Date" is a date, not an ID
     if v in ("PHONE", "AADHAAR", "ABHA", "EMAIL") and h not in ("PATIENTID", "OTHERID"):
         return v
     if h:
@@ -95,6 +112,14 @@ def classify(key: str, values: list, path: tuple = ()) -> str:
         return "PIN"
     if v == "PLACE":
         return "VILLAGE"
+    if v == "RELNAME_LIKE":
+        return "RELNAME"
+    if v == "IDLIKE":
+        return "PATIENTID"
+    if v == "ADDRESS_LIKE":
+        return "ADDRESS"
+    if v == "DOB_DATES":
+        return "DOB"
     if v == "NAME_LIKE" and not (path_toks & NONPERSON_PATH):
         return "NAME"
     return "TEXT"
@@ -147,14 +172,17 @@ def clean_field(typ: str, value, ctx: Ctx, patient_slot: bool = False):
         m = AGE_V.match(s)
         if m and int(m.group(1)) <= 120:
             ctx.counts["AGE_BANDED"] += 1
-            return age_band(int(m.group(1))) + (m.group(2) if m.group(2).strip() else "")
+            return ctx.age_text(int(m.group(1))) + (m.group(2) if m.group(2).strip() else "")
         return sanitize(s, ctx)
     if typ in ("ADDRESS", "VILLAGE", "TEHSIL"):
         ctx.counts["ADDRESS"] += 1
         return "[ADDRESS]"
     if typ == "PIN":
         ctx.counts["PIN"] += 1
-        return pin_prefix(s)
+        return "[PIN]" if ctx.hide_location else pin_prefix(s)
+    if typ == "DISTRICT" and ctx.hide_location:
+        ctx.counts["DISTRICT_HIDDEN"] += 1
+        return "[DISTRICT]"
     if typ in ("GENDER", "DISTRICT", "RELATION", "DOCTOR"):
         return value
     if isinstance(value, (int, float)):

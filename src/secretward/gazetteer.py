@@ -82,7 +82,8 @@ class Gazetteer:
 
     def add_place(self, place: str) -> None:
         p = place.strip()
-        if len(p) >= 3 and p.lower() not in SAFE_WORDS and p.lower() not in self.districts:
+        if (len(p) >= 3 and p.lower() not in SAFE_WORDS and p.lower() not in self.districts
+                and not re.match(r"(?i)(ward|bed|room|opd|icu)\b", p)):
             self.places.add(p)
 
     def add_id(self, value: str) -> None:

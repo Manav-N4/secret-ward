@@ -22,7 +22,8 @@ from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
 from .link import Evidence, Linker, name_key, norm_gender, norm_id
 from .normalize import normalize
-from .privacy import pseudonym, shift_days, short_tag
+from .privacy import cluster_band, pseudonym, shift_days, short_tag, widen
+from .rules import POLICY
 
 TEXT_EXT = {".txt", ".md", ".log", ".text"}
 MAX_DEPTH = 200
@@ -195,6 +196,7 @@ class Pipeline:
         self.docs: list[Doc] = []
         self.gaz = Gazetteer()
         self.counts = Counter()
+        self.cluster_bands: dict = {}
 
     # pass 0 + 1 ----------------------------------------------------------
     def load(self) -> None:
@@ -267,24 +269,36 @@ class Pipeline:
         """Pass 1b: a TEXT column whose values are mostly places learned from OTHER files is
         a village column, whatever its header says ("Gram/Shehar", "Basti", ...)."""
         known = {p.lower() for p in self.gaz.places}
-        if not known:
-            return
+        names = set(self.gaz.latin_tokens)
 
-        def mostly_places(vals) -> bool:
+        def mostly(vals, pool) -> bool:
             vals = [v.strip().lower() for v in vals if isinstance(v, str) and v.strip()]
-            return len(vals) >= 2 and sum(v in known for v in vals) / len(vals) >= 0.5
+            return bool(pool) and len(vals) >= 2 and sum(v in pool for v in vals) / len(vals) >= 0.5
+        changed = False
         for d in self.docs:
             if d.kind == "csv":
                 for j, t in enumerate(d.col_types):
-                    if t == "TEXT" and mostly_places([r[j] for r in d.data[1:] if j < len(r)]):
+                    col = [r[j] for r in d.data[1:] if j < len(r)]
+                    if t == "TEXT" and mostly(col, known):
                         d.col_types[j] = "VILLAGE"
+                    elif t == "TEXT" and mostly(col, names):
+                        d.col_types[j] = "NAME"          # one-word first/last name columns
+                        for v in col:
+                            harvest_value("NAME", v, self.gaz)
+                        changed = True
+                # a name column right after a Relation column holds the RELATIVE's name
+                for j in range(1, len(d.col_types)):
+                    if d.col_types[j] == "NAME" and d.col_types[j - 1] == "RELATION" and hint_type(d.data[0][j]) is None:
+                        d.col_types[j] = "RELNAME"
             elif d.kind == "json":
                 groups: dict = {}
                 for p, v in walk_leaves(d.data):
                     groups.setdefault(schema_path(p), []).append(v)
                 for sp, vals in groups.items():
-                    if d.path_types.get(sp) == "TEXT" and mostly_places(vals):
+                    if d.path_types.get(sp) == "TEXT" and mostly(vals, known):
                         d.path_types[sp] = "VILLAGE"
+        if changed:
+            self.gaz.compile()
 
     def _resolve_conventions(self) -> None:
         votes: dict[str, Counter] = {}
@@ -343,12 +357,77 @@ class Pipeline:
                 u = Unit(uid=f"{d.rel}#doc", loc="doc")
                 self._evidence(u.ev, [], [d.data])
                 d.units.append(u)
+        self._drop_multi_patient_bridges()
         all_units = [(u.uid, u.ev) for d in self.docs for u in d.units]
         clusters = Linker(all_units).run()
+        ages: dict[str, list[int]] = {}
         for d in self.docs:
             for u in d.units:
                 u.cluster = clusters.get(u.uid)
                 u.patient = pseudonym(u.cluster) if u.cluster else None
+                if u.cluster:
+                    ages.setdefault(u.cluster, []).extend(u.ev.ages)
+        self.cluster_bands = {k: cluster_band(v) for k, v in ages.items()}
+        self._k_anonymity()
+
+    def _drop_multi_patient_bridges(self) -> None:
+        """A record carrying several DIFFERENT patient IDs of one hospital (an index, a ward
+        list, a bulk export summary) describes many people. Using it to link would glue those
+        people into one pseudonym, the worst error in this task. Such records keep no
+        linking keys (they get patient: null)."""
+        def prefix(k: str) -> str:
+            m = re.match(r"ID:([A-Z]+)", k)
+            return m.group(1) if m else ""
+        patient_prefixes = set()
+        for d in self.docs:
+            if d.kind == "csv":
+                for j, t in enumerate(d.col_types):
+                    if t == "PATIENTID":
+                        for r in d.data[1:]:
+                            if j < len(r) and norm_id(r[j]):
+                                patient_prefixes.add(prefix("ID:" + norm_id(r[j])))
+            elif d.kind == "json":
+                for p, v in walk_leaves(d.data):
+                    if d.path_types.get(schema_path(p)) == "PATIENTID" and isinstance(v, (str, int)) and norm_id(str(v)):
+                        patient_prefixes.add(prefix("ID:" + norm_id(str(v))))
+        patient_prefixes.discard("")
+        for d in self.docs:
+            for u in d.units:
+                per = Counter(prefix(k) for k in u.ev.keys if k.startswith("ID:"))
+                phones = sum(1 for k in u.ev.keys if k.startswith("PH:"))
+                if any(n > 1 for pfx, n in per.items() if pfx in patient_prefixes) or phones > 3:
+                    u.ev.keys = set()
+                    self.counts["MULTI_PATIENT_RECORDS"] += 1
+
+    def _k_anonymity(self) -> None:
+        """Local generalisation: coarsen only patients in small (gender, band, district) groups.
+
+        Measured with scripts/attack.py: gender + 10-year band + district alone singles out
+        rare people (a 92-year-old man, a 5-year-old boy). Everyone else keeps full detail.
+        """
+        k = int(POLICY.get("min_group_size", 3))
+        info = {}
+        for d in self.docs:
+            for u in d.units:
+                if not u.cluster:
+                    continue
+                g, dist = info.setdefault(u.cluster, (set(), set()))
+                g |= u.ev.genders
+                dist |= u.ev.districts
+        def key(c, band):
+            g, dist = info[c]
+            return (tuple(sorted(g)), band, tuple(sorted(dist)))
+        groups = Counter(key(c, self.cluster_bands.get(c)) for c in info)
+        self.hidden_loc = set()
+        for c in sorted(info):
+            if groups[key(c, self.cluster_bands.get(c))] < k:
+                self.cluster_bands[c] = widen(self.cluster_bands.get(c))
+                self.counts["K_ANON_WIDENED"] += 1
+        groups = Counter(key(c, self.cluster_bands.get(c)) for c in info)
+        for c in sorted(info):
+            if groups[key(c, self.cluster_bands.get(c))] < int(POLICY.get("hide_location_below", 2)):
+                self.hidden_loc.add(c)
+                self.counts["K_ANON_LOCATION_HIDDEN"] += 1
 
     @staticmethod
     def _json_names(pairs) -> list[str]:
@@ -401,6 +480,8 @@ class Pipeline:
                 m = re.match(r"\s*(\d{1,3})", s)
                 if m:
                     ev.ages.append(int(m.group(1)))
+            elif typ == "DISTRICT" and s.strip():
+                ev.districts.add(s.strip().lower())
         for n in names or []:
             k = name_key(n)
             if k:
@@ -452,6 +533,8 @@ class Pipeline:
                   pseudonym=u.patient if u else None)
         if u:
             ctx.own_ids = {k[3:] for k in u.ev.keys if k.startswith("ID:")}
+            ctx.band = self.cluster_bands.get(u.cluster) if u.cluster else cluster_band(u.ev.ages)
+            ctx.hide_location = u.cluster in getattr(self, "hidden_loc", set())
         return ctx
 
     def sanitize_csv(self, d: Doc) -> str:

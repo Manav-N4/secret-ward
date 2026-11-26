@@ -35,6 +35,7 @@ class Evidence:
     relatives: set = field(default_factory=set)
     genders: set = field(default_factory=set)
     ages: list = field(default_factory=list)
+    districts: set = field(default_factory=set)
 
     def has_patient(self) -> bool:
         return bool(self.keys or self.names)

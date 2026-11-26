@@ -34,3 +34,7 @@ truth.json
 
 # macOS
 .DS_Store
+
+# local run output (scripts/check_all.sh writes here)
+out/
+my_output/

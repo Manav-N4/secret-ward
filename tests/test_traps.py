@@ -27,6 +27,12 @@ CASES = [
     ("ASHA worker visited", ["ASHA worker"], []),
     ("Platelets 150000-410000 /cumm", ["150000-410000"], []),
     ("Parkinson's disease, on levodopa", ["Parkinson's disease"], []),
+    ("14:00 - Parvathi Pandeya - K/C/O urinary tract infection.", ["K/C/O urinary tract infection"], ["Parvathi", "Pandeya"]),
+    ("[17/03/26, 9:32 pm] Raju Papa: <attachment: report.pdf>", [], ["Raju"]),
+    ("Next morning 06:00 - Patient ne raat theek se neend li.", ["Patient ne raat theek se neend li"], []),
+    ("History: No K/C/O DM/HTN.", ["No K/C/O DM/HTN"], []),
+    ("Ward/Bed: Ward 4 (Medicine) / Bed 24", ["Ward 4 (Medicine) / Bed 24"], []),
+    ("मकान नं. 32, जामा मस्जिद के पीछे, तहसील नवाबगंज", [], ["जामा मस्जिद के पीछे", "32"]),
 ]
 
 
