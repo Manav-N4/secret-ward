@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 os.environ.setdefault("RAKSHA_SECRET", "test")
-from secretward.detect import Ctx, sanitize          # noqa: E402
+from secretward.detect import Ctx, sanitize, sanitize_header  # noqa: E402
 from secretward.gazetteer import Gazetteer           # noqa: E402
 
 CASES = [
@@ -32,6 +32,8 @@ CASES = [
     ("Next morning 06:00 - Patient ne raat theek se neend li.", ["Patient ne raat theek se neend li"], []),
     ("History: No K/C/O DM/HTN.", ["No K/C/O DM/HTN"], []),
     ("Ward/Bed: Ward 4 (Medicine) / Bed 24", ["Ward 4 (Medicine) / Bed 24"], []),
+    ("Attendant (W/o Mukesh Pandey) informed about diet.", ["Attendant (W/o", "informed about diet"], ["Mukesh", "Pandey"]),
+    ("Relation: S/o-W/o-D/o", ["S/o-W/o-D/o"], []),
     ("मकान नं. 32, जामा मस्जिद के पीछे, तहसील नवाबगंज", [], ["जामा मस्जिद के पीछे", "32"]),
 ]
 
@@ -50,7 +52,12 @@ def run():
             if r in out:
                 bad += 1
                 print("LEAKED", repr(r), "->", repr(out))
-    print(f"{len(CASES)} cases, {bad} failures")
+    for header in ("S/o-W/o-D/o", "Patient's Name", "Pita/Pati ka Naam", "Gram/Shehar", "DOB (MM/DD/YYYY)"):
+        out = sanitize_header(header, Ctx(gaz=gaz))
+        if out != header:
+            bad += 1
+            print("HEADER", repr(header), "->", repr(out))
+    print(f"{len(CASES)} cases + 5 headers, {bad} failures")
     return bad
 
 

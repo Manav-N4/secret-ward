@@ -108,17 +108,17 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 |---|---|---|
 | PII pieces leaked | 2718 / 3230 (84.1%) | 0 / 3230 |
 | Canaries found | 4 / 4 | 0 / 4 |
-| Medical values kept | 4855 / 4855 | 4855 / 4855 |
-| Linking precision / recall | 0 / 0 | 1.00 / 0.82 |
+| Medical values kept | 4855 / 4855 | 4829 / 4855 (99.5%; 26 districts hidden on purpose for the smallest groups) |
+| Linking precision / recall | 0 / 0 | 1.00 / 0.99 (was 0.82: disease durations like "x 8 yrs" were misread as ages) |
 | Runtime | ~2 s | ~2 s |
 
 Privacy, measured with `scripts/attack.py` (our approximation of the official arena; lower is better):
 
 | Attack | Raw input | v0.1 | v0.2 (one band per patient + local k-anonymity) |
 |---|---|---|---|
-| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.039 |
+| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.033 |
 | A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
-| A5 targeted attack success | 100% | 51.4% | 49.0% |
+| A5 targeted attack success | 100% | 51.4% | 48.6% |
 
 Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569;
 every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00.
