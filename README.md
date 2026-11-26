@@ -74,6 +74,11 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
   hidden too. Only those patients are coarsened; everyone else keeps full detail.
 * **Location:** house, mohalla, village, tehsil removed; district kept; PIN reduced to 3 digits
   (adds no identifying power beyond district on the practice data).
+* **Rare conditions (A5 defence, measured, shipped off):** `src/secretward/conditions.py` can generalise
+  diagnoses seen in very few patients to their ICD-10 chapter (`rare_condition_max_patients`). On the
+  practice data it cost 1.7-3.3% of medical values and did not lower the targeted attack (0.49 -> 0.48-0.49):
+  the attacker wins through common conditions combined with profile consistency and the exact length of
+  stay, which the rules require us to keep. We keep it off and report A5 as our known residual risk.
 * **Replacements:** typed placeholders (`[NAME]`, `[PHONE]` …), never fake names (a fake name can
   collide with a real person and count as a leak).
 
@@ -124,5 +129,6 @@ every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00.
 * Free-text names with no label, honorific, relation marker, trigger or gazetteer match are missed.
 * Cross-script matching uses a coarse phonetic skeleton; rare spellings can slip.
 * XML/PDF/image files are quarantined rather than cleaned.
-* Rare-diagnosis records are not yet coarsened further (planned); A5 (targeted attack) is our weakest privacy number.
+* A5 (targeted attack, about 49% on practice data) is our weakest privacy number. Its main drivers (common
+  condition + exact length of stay + consistent profile) cannot be removed without breaking clinical utility.
 * With only ~50 patients per release, local k-anonymity coarsens many patients; on larger releases fewer will be affected.

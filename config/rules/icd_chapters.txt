@@ -1,0 +1,23 @@
+# ICD-10 chapter ranges -> label. Used to generalise a RARE diagnosis to its chapter.
+# start<TAB>end<TAB>label
+A00	B99	Infectious and parasitic disease
+C00	D48	Neoplasm
+D50	D89	Blood or immune disorder
+E00	E90	Endocrine, nutritional or metabolic disease
+F00	F99	Mental or behavioural disorder
+G00	G99	Nervous system disease
+H00	H59	Eye disorder
+H60	H95	Ear disorder
+I00	I99	Circulatory system disease
+J00	J99	Respiratory disease
+K00	K93	Digestive system disease
+L00	L99	Skin disease
+M00	M99	Musculoskeletal disease
+N00	N99	Genitourinary disease
+O00	O99	Pregnancy-related condition
+P00	P96	Perinatal condition
+Q00	Q99	Congenital anomaly
+R00	R99	Symptom or abnormal finding
+S00	T98	Injury or poisoning
+V01	Y98	External cause
+Z00	Z99	Health service contact

@@ -46,6 +46,7 @@ class Ctx:
     own_ids: set = field(default_factory=set)         # this record's own hospital IDs
     band: tuple | None = None                         # the patient's single age band, if known
     hide_location: bool = False                       # small group: district + PIN prefix hidden too
+    rare: object = None                               # RareConditions for this release (A5 defence)
 
     def age_text(self, age: int) -> str:
         if self.band and self.band[0] <= age <= self.band[1]:
@@ -389,4 +390,6 @@ def sanitize(text: str, ctx: Ctx, _nested: bool = False) -> str:
     text = clean_ages(text, ctx)
     text = clean_address(text, ctx)
     text = clean_names(text, ctx)
+    if ctx.rare is not None and not _nested:
+        text = ctx.rare.generalise(text, ctx.counts)
     return restore(text, keep)

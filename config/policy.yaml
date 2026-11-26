@@ -6,3 +6,8 @@ keep_district: 1           # district stays (utility), village/tehsil/house/moha
 min_group_size: 3          # k: a patient whose (gender, age band, district) group in our release has
                            # fewer patients gets a 20-year band
 hide_location_below: 2     # after widening, groups smaller than this also hide district + PIN prefix (0 = never)
+rare_condition_max_patients: 0  # 0 = off. If N > 0, a diagnosis/procedure seen in at most N patients of the
+                           # release is generalised to its ICD-10 chapter. Measured on practice data: N=1..3
+                           # cost 1.7-3.3% of medical values and left the targeted attack (A5) at 0.48-0.49,
+                           # because A5 succeeds through COMMON conditions + profile consistency and the exact
+                           # length of stay (which must stay exact). So it ships off; see README.
