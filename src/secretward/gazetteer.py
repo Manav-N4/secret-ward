@@ -92,16 +92,69 @@ class Gazetteer:
 
     # ------------------------------------------------------------------ matching
     def compile(self) -> None:
+        """Build LINEAR-time matchers.
+
+        One regex alternation of every learned name costs O(text x vocabulary): Python's
+        regex engine tries each alternative at each position, so runtime grew
+        quadratically with the number of patients (QA: 200 files 2.5 s, 4,000 files 118 s).
+        Instead, entries made only of letters and spaces go into hash sets and are matched
+        word-sequence by word-sequence; the rare entries with other characters keep a
+        small regex. Same boundaries, same longest-match-first rule, same output.
+        """
         med = self.medical - self.strong_tokens
         self.latin_tokens = {t for t in self.latin_tokens if t not in med and t not in self.districts}
         self.latin_full = {f for f in self.latin_full if not (set(f.split()) & med)}
         self.places = {p for p in self.places if p.lower() not in self.districts and p.lower() not in med}
-        latin = sorted(self.latin_full | self.latin_tokens, key=len, reverse=True)
-        deva = sorted(self.deva_strings, key=len, reverse=True)
-        places = sorted(self.places, key=len, reverse=True)
-        lat_alt = "|".join(re.escape(x).replace(r"\ ", r"[\s_]+") for x in latin) or "(?!x)x"
-        self.rx_latin = re.compile(rf"(?<![A-Za-z])(?:{lat_alt})(?![A-Za-z])", re.I)
-        deva_alt = "|".join(re.escape(x).replace(r"\ ", r"\s+") for x in deva) or "(?!x)x"
-        self.rx_deva = re.compile(rf"(?<![ऀ-ॿ])(?:{deva_alt})(?![ऀ-ॿ])")
-        pl_alt = "|".join(re.escape(x).replace(r"\ ", r"[\s_]+") for x in places) or "(?!x)x"
-        self.rx_place = re.compile(rf"(?<![A-Za-zऀ-ॿ])(?:{pl_alt})(?![A-Za-zऀ-ॿ])", re.I)
+        self.m_latin = _Matcher(self.latin_full | self.latin_tokens, r"[A-Za-z]+", r"[\s_]+", True, "A-Za-z")
+        self.m_deva = _Matcher(self.deva_strings, r"[\u0900-\u097F]+", r"\s+", False, "\u0900-\u097F")
+        self.m_place = _Matcher(self.places, r"[A-Za-z\u0900-\u097F]+", r"[\s_]+", True, "A-Za-z\u0900-\u097F")
+
+
+class _Matcher:
+    """Longest-first, word-aligned matching of a phrase list in linear time."""
+
+    def __init__(self, entries, word: str, gap: str, fold: bool, letters: str) -> None:
+        self.word = re.compile(word)
+        self.gap = re.compile(gap)
+        self.fold = fold
+        wre = re.compile(rf"^{word}(?:{gap}{word})*$")
+        simple, other = set(), []
+        for e in entries:
+            if wre.match(e):
+                simple.add(" ".join(self.word.findall(e.lower() if fold else e)))
+            else:
+                other.append(e)
+        self.phrases = simple
+        self.max_words = max((len(p.split(" ")) for p in simple), default=0)
+        other = sorted(other, key=len, reverse=True)
+        alt = "|".join(re.escape(x).replace(r"\ ", gap) for x in other)
+        self.rx_other = re.compile(rf"(?<![{letters}])(?:{alt})(?![{letters}])", re.I if fold else 0) if other else None
+
+    def subn(self, repl: str, text: str):
+        n_total = 0
+        if self.rx_other is not None:
+            text, n = self.rx_other.subn(repl, text)
+            n_total += n
+        if not self.phrases or not text:
+            return text, n_total
+        runs = list(self.word.finditer(text))
+        out, last, i = [], 0, 0
+        while i < len(runs):
+            hit = 0
+            for n in range(min(self.max_words, len(runs) - i), 0, -1):
+                if any(not self.gap.fullmatch(text[runs[k].end():runs[k + 1].start()]) for k in range(i, i + n - 1)):
+                    continue
+                key = " ".join((r.group(0).lower() if self.fold else r.group(0)) for r in runs[i:i + n])
+                if key in self.phrases:
+                    hit = n
+                    break
+            if hit:
+                out.append(text[last:runs[i].start()])
+                out.append(repl)
+                last = runs[i + hit - 1].end()
+                n_total += 1
+                i += hit
+            else:
+                i += 1
+        out.append(text[last:])
+        return "".join(out), n_total
