@@ -1,0 +1,25 @@
+# Header / JSON-key hints -> semantic type.
+# Format: TYPE<TAB>comma-separated hints. A hint matches a key TOKEN (keys are split on
+# spaces, _, -, / and camelCase, then lowercased). "=x" matches only if the whole key is x.
+# Hints of 6+ letters also match inside a glued key ("patientname"). First matching line wins.
+# Content checks in fields.py can still override (a "Notes" column full of phones is PHONE).
+MEDICAL	test,testname,drug,medicine,medication,procedure,diagnosis,package,investigation,generic,brand,complaint,complaints,resourcetype,=type,department,specialty,speciality,=hospital,=lab,=facility,=unit,=range,loinc,icd,=code
+DOCTOR	doctor,consultant,referred,referredby,physician,surgeon,=dr
+RELNAME	relative,relativename,guardian,father,husband,pita,pati,attendant,nextofkin,mother,spouse
+RELATION	relation,rishta,=relationship
+PHONE	mobile,phone,callback,tel,telephone,whatsapp,cell,=contact,contactno,=mob
+EMAIL	email,=mail
+AADHAAR	aadhaar,aadhar,=uid,aadhaarno
+ABHA	abha,healthid,abhano
+PAN	=pan,panno,payerpan
+OTHERID	policy,pmjay,insurance,claim,=bill,billno,cardno,ticket,=ipd,ipdno,admno,admissionno,visitid,=visit_id
+PATIENTID	uhid,mrn,patientid,patientref,=regno,registration,crno,hospitaluhid,=reg,patient_id
+DOB	dob,dateofbirth,birthdate,janm,janmtithi,=birth
+AGE	=age,umar,aayu,आयु,उम्र,ageyears,=ageyrs
+GENDER	gender,=sex,ling
+ADDRESS	address,street,pata,=line,houseno,=house,makan,landmark,locality,mohalla
+VILLAGE	village,gaon,=gram,=city,=town
+TEHSIL	tehsil,taluka,=block
+DISTRICT	district,jila,zila,distt
+PIN	=pin,=zip,postal,postalcode,pincode,zipcode
+NAME	patientname,=name,naam,=first,=last,=given,=family,fullname,firstname,lastname,=local,नाम

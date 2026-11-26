@@ -1,0 +1,56 @@
+"""Meaning-trap tests. Run: python -m pytest tests -q   (or python tests/test_traps.py)
+
+Hindi readers: add a line to CASES for every tricky phrase you find.
+  (input text, must_keep: list of substrings that must survive, must_remove: substrings that must go)
+"""
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+os.environ.setdefault("RAKSHA_SECRET", "test")
+from secretward.detect import Ctx, sanitize          # noqa: E402
+from secretward.gazetteer import Gazetteer           # noqa: E402
+
+CASES = [
+    ("C/O fever for 3 days", ["C/O fever for 3 days"], []),
+    ("C/O Ramesh Yadav, H.No. 12", [], ["Ramesh", "Yadav"]),
+    ("Dr. Ramesh Srivastava (MD Medicine)", ["Dr. Ramesh Srivastava"], []),
+    ("Tab Paracetamol 650mg 1-1-1 x 5 days", ["Paracetamol 650mg 1-1-1 x 5 days"], []),
+    ("Dolo 650 BD x 5 days", ["Dolo 650 BD x 5 days"], []),
+    ("K/C/O addison's disease", ["K/C/O addison's disease"], []),
+    ("Shahid sahab ka BP 117/82", ["BP 117/82"], ["Shahid"]),
+    ("Attendant (S/o Zubair) informed", [], ["Zubair"]),
+    ("18:40 - Zorawar Qadri (attendant, bed 12), mob 6910522119", ["bed 12"], ["Zorawar", "6910522119"]),
+    ("नाम: मोहम्मद शाहिद   आयु: 39 वर्ष", ["30-39 वर्ष"], ["मोहम्मद शाहिद"]),
+    ("Mobile: +91 72864 90658", [], ["72864"]),
+    ("ASHA worker visited", ["ASHA worker"], []),
+    ("Platelets 150000-410000 /cumm", ["150000-410000"], []),
+    ("Parkinson's disease, on levodopa", ["Parkinson's disease"], []),
+]
+
+
+def run():
+    gaz = Gazetteer()
+    gaz.compile()
+    bad = 0
+    for text, keep, remove in CASES:
+        out = sanitize(text, Ctx(gaz=gaz, shift=10))
+        for k in keep:
+            if k not in out:
+                bad += 1
+                print("LOST  ", repr(k), "->", repr(out))
+        for r in remove:
+            if r in out:
+                bad += 1
+                print("LEAKED", repr(r), "->", repr(out))
+    print(f"{len(CASES)} cases, {bad} failures")
+    return bad
+
+
+def test_traps():
+    assert run() == 0
+
+
+if __name__ == "__main__":
+    sys.exit(1 if run() else 0)

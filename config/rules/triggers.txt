@@ -1,0 +1,19 @@
+# Context phrases after which a person's name usually follows (non-patient people too).
+called by
+witnessed by
+raised by
+informed by
+accompanied by
+brought by
+attended by
+reported by
+signed by
+consent given by
+attendant
+visitor
+relative
+bystander
+caller
+informant
+contact person
+emergency contact

@@ -1,0 +1,16 @@
+# Name tokens that do not identify anyone on their own (still removed inside a detected name).
+kumar
+kumari
+devi
+singh
+bai
+lal
+prasad
+md
+md.
+mohd
+mohd.
+ji
+bano
+begum
+khatoon

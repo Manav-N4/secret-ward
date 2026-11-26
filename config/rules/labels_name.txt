@@ -1,0 +1,15 @@
+# Labels that introduce the PATIENT's name. One per line, case-insensitive. Hindi readers: add more.
+patient name
+patient's name
+name of patient
+pt name
+pt. name
+name
+naam
+mareez ka naam
+मरीज़ का नाम
+मरीज का नाम
+रोगी का नाम
+नाम
+पेशेंट
+patient

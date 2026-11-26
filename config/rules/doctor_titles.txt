@@ -1,0 +1,7 @@
+# Titles that mark a DOCTOR; the following name is kept.
+dr
+dr.
+doctor
+डॉ
+डॉ.
+डा.

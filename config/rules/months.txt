@@ -1,0 +1,13 @@
+# month-number <TAB> names (English and Hindi). Used for dates written with month names.
+1	jan january जनवरी
+2	feb february फरवरी फ़रवरी
+3	mar march मार्च
+4	apr april अप्रैल
+5	may मई
+6	jun june जून
+7	jul july जुलाई
+8	aug august अगस्त
+9	sep sept september सितंबर सितम्बर
+10	oct october अक्टूबर अक्तूबर
+11	nov november नवंबर नवम्बर
+12	dec december दिसंबर दिसम्बर

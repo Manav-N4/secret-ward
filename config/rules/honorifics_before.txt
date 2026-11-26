@@ -1,0 +1,22 @@
+# Words that PRECEDE a name: "Smt. Kamla", "श्री राम". Doctor titles are NOT here on purpose.
+shri
+sri
+shree
+smt
+smt.
+shrimati
+mr
+mr.
+mrs
+mrs.
+ms
+ms.
+km
+km.
+kumari
+master
+baby
+श्री
+श्रीमती
+सुश्री
+कुमारी

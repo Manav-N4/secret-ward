@@ -1,0 +1,538 @@
+"""Orchestration: read -> harvest (pass 1) -> link -> sanitize (pass 2) -> write.
+
+Fail-safe rules from the spec are enforced here: every input file appears in the report,
+anything we cannot parse is quarantined (never copied), and no file content ever reaches
+stdout, stderr or the report.
+"""
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import json
+import re
+import sys
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+
+from . import dates
+from .detect import ID_TOKEN, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
+from .fields import classify, clean_field, harvest_value, hint_type
+from .gazetteer import Gazetteer
+from .link import Evidence, Linker, name_key, norm_gender, norm_id
+from .normalize import normalize
+from .privacy import pseudonym, shift_days, short_tag
+
+TEXT_EXT = {".txt", ".md", ".log", ".text"}
+MAX_DEPTH = 200
+UUIDISH = re.compile(r"^(?:urn:uuid:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^urn:uuid:", re.I)
+PHONE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])(?:\+?91[\s-]?)?0?[6-9]\d{4}[\s-]?\d{5}(?![0-9])")
+AADHAAR_IN_TEXT = re.compile(r"(?<![0-9])\d{4}[\s-]?\d{4}[\s-]?\d{4}(?![0-9])")
+ABHA_IN_TEXT = re.compile(r"(?<![0-9])\d{2}-\d{4}-\d{4}-\d{4}(?![0-9])")
+AGE_IN_TEXT = re.compile(r"(?i)(?:age(?:/sex)?\s*[:\-]?\s*|आयु\s*[:\-]?\s*)(\d{1,3})|(\d{1,3})\s*(?:yrs?|years?|y|वर्ष)\b")
+GENDER_IN_TEXT = re.compile(r"(?i)(?:/\s*|sex\s*[:\-]\s*)(M|F|male|female)\b")
+
+
+class Quarantine(Exception):
+    pass
+
+
+@dataclass
+class Unit:
+    uid: str
+    loc: str
+    ev: Evidence = field(default_factory=Evidence)
+    patient: str | None = None
+    cluster: str | None = None
+
+
+@dataclass
+class Doc:
+    rel: str
+    sha: str
+    kind: str            # csv | json | text
+    data: object = None
+    delimiter: str = ","
+    units: list = field(default_factory=list)
+    conv: str | None = None
+    prefixes: set = field(default_factory=set)
+    col_types: list = field(default_factory=list)
+    path_types: dict = field(default_factory=dict)
+    out_rel: str = ""
+
+
+# ------------------------------------------------------------------------- reading
+def decode(raw: bytes) -> str:
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw[3:].decode("utf-8")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", errors="strict")
+    bad = sum(1 for c in text if (ord(c) < 32 and c not in "\t\n\r") or c == "�")
+    if bad > max(2, len(text) // 200):
+        raise Quarantine("corrupt_text")
+    return text
+
+
+def depth(o, d=0) -> int:
+    stack = [(o, 1)]
+    best = 0
+    while stack:
+        x, k = stack.pop()
+        best = max(best, k)
+        if best > MAX_DEPTH:
+            return best
+        if isinstance(x, dict):
+            stack.extend((v, k + 1) for v in x.values())
+        elif isinstance(x, list):
+            stack.extend((v, k + 1) for v in x)
+    return best
+
+
+def read_doc(path: Path, rel: str) -> Doc:
+    raw = path.read_bytes()
+    sha = hashlib.sha256(raw).hexdigest()
+    ext = path.suffix.lower()
+    doc = Doc(rel=rel, sha=sha, kind="")
+    try:
+        if not raw.strip():
+            raise Quarantine("empty_file")
+        if ext not in (".csv", ".tsv", ".json") and ext not in TEXT_EXT:
+            raise Quarantine("unsupported_format")
+        text = decode(raw)
+        if ext in (".csv", ".tsv"):
+            if text.lstrip()[:1] in ("{", "["):
+                raise Quarantine("format_mismatch")
+            delim = "\t" if ext == ".tsv" or (text.count("\t") > text.count(",")) else ","
+            rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=delim))
+            if not rows or not any(rows[0]):
+                raise Quarantine("empty_table")
+            doc.kind, doc.data, doc.delimiter = "csv", rows, delim
+        elif ext == ".json":
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                raise Quarantine("malformed_json") from None
+            if depth(data) > MAX_DEPTH:
+                raise Quarantine("nesting_too_deep")
+            doc.kind, doc.data = "json", data
+        else:
+            doc.kind, doc.data = "text", text
+    except Quarantine as q:
+        doc.kind, doc.data = "quarantine", str(q)
+    except (UnicodeError, csv.Error, RecursionError):
+        doc.kind, doc.data = "quarantine", "unreadable"
+    return doc
+
+
+# ------------------------------------------------------------------------- JSON helpers
+def is_record_list(v) -> bool:
+    return isinstance(v, list) and bool(v) and all(isinstance(x, dict) for x in v)
+
+
+PATIENT_KEYS = re.compile(r"(?i)name|naam|uhid|mrn|phone|mobile|patient|aadha|abha|dob")
+
+
+def _outside_lists_has_patient(data: dict) -> bool:
+    """A lab report with a 'patient' block plus a 'panels' list is ONE record, not many."""
+    for k, v in data.items():
+        if is_record_list(v):
+            continue
+        for p, leaf in walk_leaves(v, (k,)):
+            if isinstance(leaf, (str, int)) and any(PATIENT_KEYS.search(str(x)) for x in p if not isinstance(x, int)) \
+                    and not str(p[0]).startswith("_"):
+                return True
+    return False
+
+
+def json_units(data) -> list[tuple[str, object]]:
+    if isinstance(data, dict) and data.get("resourceType") != "Bundle" and not _outside_lists_has_patient(data):
+        lists = [(k, v) for k, v in data.items() if is_record_list(v)]
+        if lists:
+            out = []
+            for k, v in lists:
+                pk = str(k).replace("~", "~0").replace("/", "~1")
+                out += [(f"/{pk}/{i}", x) for i, x in enumerate(v)]
+            return out
+    if isinstance(data, list) and is_record_list(data):
+        return [(f"/{i}", x) for i, x in enumerate(data)]
+    return [("doc", data)]
+
+
+def walk_leaves(o, path=()):
+    stack = [(o, path)]
+    while stack:
+        x, p = stack.pop()
+        if isinstance(x, dict):
+            for k in reversed(list(x)):
+                stack.append((x[k], p + (k,)))
+        elif isinstance(x, list):
+            for i in range(len(x) - 1, -1, -1):
+                stack.append((x[i], p + (i,)))
+        else:
+            yield p, x
+
+
+def schema_path(p: tuple) -> tuple:
+    return tuple("*" if isinstance(k, int) else k for k in p)
+
+
+def last_key(p: tuple) -> str:
+    for k in reversed(p):
+        if not isinstance(k, int):
+            return str(k)
+    return ""
+
+
+# ------------------------------------------------------------------------- pipeline
+class Pipeline:
+    def __init__(self, inp: Path, out: Path) -> None:
+        self.inp, self.out = inp, out
+        self.docs: list[Doc] = []
+        self.gaz = Gazetteer()
+        self.counts = Counter()
+
+    # pass 0 + 1 ----------------------------------------------------------
+    def load(self) -> None:
+        for path in sorted(p for p in self.inp.rglob("*") if p.is_file()):
+            rel = path.relative_to(self.inp).as_posix()
+            self.docs.append(read_doc(path, rel))
+        for d in self.docs:
+            if d.kind == "csv":
+                self._harvest_csv(d)
+            elif d.kind == "json":
+                self._harvest_json(d)
+            elif d.kind == "text":
+                self._harvest_text(d.data)
+        self.gaz.compile()
+        self._resolve_conventions()
+
+    def _harvest_csv(self, d: Doc) -> None:
+        header, body = d.data[0], d.data[1:]
+        cols, strong = [], []
+        for j, h in enumerate(header):
+            vals = [r[j] for r in body if j < len(r)]
+            cols.append(classify(h, vals))
+            strong.append(hint_type(h) in ("NAME", "RELNAME"))
+        d.col_types = cols
+        for r in body:
+            for j, v in enumerate(r):
+                if j < len(cols):
+                    harvest_value(cols[j], v, self.gaz, strong=strong[j])
+                    if cols[j] == "TEXT":
+                        self._harvest_text(v)
+
+    def _harvest_json(self, d: Doc) -> None:
+        groups: dict[tuple, list] = {}
+        for p, v in walk_leaves(d.data):
+            groups.setdefault(schema_path(p), []).append(v)
+        for sp, vals in groups.items():
+            key = last_key(sp)
+            typ = classify(key, vals, sp[:-1])
+            d.path_types[sp] = typ
+            strong = hint_type(key) in ("NAME", "RELNAME")
+            for v in vals:
+                harvest_value(typ, v, self.gaz, strong=strong)
+                if typ == "TEXT" and isinstance(v, str):
+                    self._harvest_text(v)
+
+    @staticmethod
+    def _keys(o):
+        stack = [o]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    yield k
+                    stack.append(v)
+            elif isinstance(x, list):
+                stack.extend(x)
+
+    def _harvest_text(self, text: str) -> None:
+        t = normalize(text)
+        for rx in (LABEL_RX, REL_RX):
+            for m in rx.finditer(t):
+                span = _trim_span(m.group(2))
+                if span and _is_person(span):
+                    self.gaz.add_name(span)
+        for m in ID_TOKEN.finditer(t):
+            self.gaz.add_id(m.group(0))
+
+    def _resolve_conventions(self) -> None:
+        votes: dict[str, Counter] = {}
+        for d in self.docs:
+            blob = self._doc_text(d)
+            if blob is None:
+                continue
+            d.prefixes = {re.match(r"[A-Za-z]+", m.group(0)).group(0).upper()
+                          for m in ID_TOKEN.finditer(blob) if re.match(r"[A-Za-z]+", m.group(0))}
+            hdr = blob[:400].lower()
+            d.conv = ("MDY" if "mm/dd" in hdr else "DMY" if "dd/mm" in hdr else None) or dates.infer_convention(blob)
+            if d.conv:
+                for p in d.prefixes:
+                    votes.setdefault(p, Counter())[d.conv] += 1
+        for d in self.docs:
+            if d.conv is None and d.prefixes:
+                c = Counter()
+                for p in d.prefixes:
+                    c.update(votes.get(p, {}))
+                d.conv = c.most_common(1)[0][0] if c else None
+            d.conv = d.conv or "DMY"
+
+    @staticmethod
+    def _doc_text(d: Doc) -> str | None:
+        if d.kind == "text":
+            return d.data
+        if d.kind == "csv":
+            return "\n".join(",".join(r) for r in d.data)
+        if d.kind == "json":
+            return json.dumps(d.data, ensure_ascii=False)
+        return None
+
+    # evidence + linking --------------------------------------------------
+    def build_units(self) -> None:
+        for d in self.docs:
+            if d.kind == "csv":
+                header = d.data[0]
+                for i, row in enumerate(d.data[1:]):
+                    u = Unit(uid=f"{d.rel}#row:{i}", loc=f"row:{i}")
+                    pairs = [(d.col_types[j], v) for j, v in enumerate(row) if j < len(d.col_types)]
+                    self._evidence(u.ev, pairs, [v for (t, v) in pairs if t == "TEXT"])
+                    d.units.append(u)
+            elif d.kind == "json":
+                for loc, sub in json_units(d.data):
+                    u = Unit(uid=f"{d.rel}#{loc}", loc=loc)
+                    prefix = () if loc == "doc" else tuple(int(x) if x.isdigit() else x.replace("~1", "/").replace("~0", "~") for x in loc.strip("/").split("/"))
+                    pairs, texts = [], []
+                    for p, v in walk_leaves(sub, prefix):
+                        typ = d.path_types.get(schema_path(p), "TEXT")
+                        pairs.append((typ, v, p))
+                    names = self._json_names(pairs)
+                    self._evidence(u.ev, [(t, v) for t, v, _ in pairs if t != "NAME"],
+                                   [v for t, v, _ in pairs if t == "TEXT" and isinstance(v, str)], names)
+                    d.units.append(u)
+            elif d.kind == "text":
+                u = Unit(uid=f"{d.rel}#doc", loc="doc")
+                self._evidence(u.ev, [], [d.data])
+                d.units.append(u)
+        all_units = [(u.uid, u.ev) for d in self.docs for u in d.units]
+        clusters = Linker(all_units).run()
+        for d in self.docs:
+            for u in d.units:
+                u.cluster = clusters.get(u.uid)
+                u.patient = pseudonym(u.cluster) if u.cluster else None
+
+    @staticmethod
+    def _json_names(pairs) -> list[str]:
+        """Join first/last name leaves that sit under the same parent into one name."""
+        by_parent: dict[tuple, list[str]] = {}
+        for t, v, p in pairs:
+            if t == "NAME" and isinstance(v, str) and v.strip():
+                by_parent.setdefault(p[:-1], []).append(v)
+        out = []
+        for parent in sorted(by_parent, key=str):
+            vals = by_parent[parent]
+            latin = [v for v in vals if v.isascii()]
+            out.append(" ".join(latin) if latin else vals[0])
+        return out
+
+    def _evidence(self, ev: Evidence, pairs, texts, names=None) -> None:
+        for typ, v in pairs:
+            if v is None:
+                continue
+            s = str(v)
+            if typ in ("PATIENTID", "OTHERID"):
+                k = norm_id(s)
+                if k:
+                    ev.keys.add("ID:" + k)
+            elif typ == "PHONE":
+                dg = re.sub(r"\D", "", s)
+                if len(dg) >= 10:
+                    ev.keys.add("PH:" + dg[-10:])
+            elif typ == "AADHAAR":
+                dg = re.sub(r"\D", "", s)
+                if len(dg) == 12:
+                    ev.keys.add("AA:" + dg)
+            elif typ == "ABHA":
+                dg = re.sub(r"\D", "", s)
+                if len(dg) == 14:
+                    ev.keys.add("AB:" + dg)
+            elif typ == "NAME" and isinstance(v, str):
+                k = name_key(s)
+                if k:
+                    ev.names.add(k)
+            elif typ == "RELNAME":
+                k = name_key(re.sub(r"^\s*[SDWC]/[Oo]\s*", "", s))
+                if k:
+                    ev.relatives.add(k)
+            elif typ == "GENDER":
+                g = norm_gender(s)
+                if g:
+                    ev.genders.add(g)
+            elif typ == "AGE":
+                m = re.match(r"\s*(\d{1,3})", s)
+                if m:
+                    ev.ages.append(int(m.group(1)))
+        for n in names or []:
+            k = name_key(n)
+            if k:
+                ev.names.add(k)
+        for t in texts:
+            if not isinstance(t, str):
+                continue
+            t = normalize(t)
+            for m in ID_TOKEN.finditer(t):
+                k = norm_id(m.group(0))
+                if k:
+                    ev.keys.add("ID:" + k)
+            for m in ABHA_IN_TEXT.finditer(t):
+                ev.keys.add("AB:" + re.sub(r"\D", "", m.group(0)))
+            for m in PHONE_IN_TEXT.finditer(t):
+                ev.keys.add("PH:" + re.sub(r"\D", "", m.group(0))[-10:])
+            for m in LABEL_RX.finditer(t):
+                span = _trim_span(m.group(2))
+                if span and _is_person(span):
+                    k = name_key(span)
+                    if k:
+                        ev.names.add(k)
+            for m in PRE_REL_RX.finditer(t):
+                span = _trim_span(m.group(1))
+                if span and _is_person(span):
+                    k = name_key(span)
+                    if k:
+                        ev.names.add(k)
+            for m in REL_RX.finditer(t):
+                span = _trim_span(m.group(2))
+                if span and _is_person(span):
+                    k = name_key(span)
+                    if k:
+                        ev.relatives.add(k)
+            for m in GENDER_IN_TEXT.finditer(t):
+                g = norm_gender(m.group(1))
+                if g:
+                    ev.genders.add(g)
+            m = AGE_IN_TEXT.search(t)
+            if m:
+                a = int(m.group(1) or m.group(2))
+                if a <= 120:
+                    ev.ages.append(a)
+
+    # pass 2 --------------------------------------------------------------
+    def ctx_for(self, d: Doc, u: Unit | None) -> Ctx:
+        ck = u.cluster if u and u.cluster else (u.uid if u else d.rel)
+        ctx = Ctx(gaz=self.gaz, shift=shift_days(ck), conv=d.conv or "DMY",
+                  pseudonym=u.patient if u else None)
+        if u:
+            ctx.own_ids = {k[3:] for k in u.ev.keys if k.startswith("ID:")}
+        return ctx
+
+    def sanitize_csv(self, d: Doc) -> str:
+        header, body = d.data[0], d.data[1:]
+        hctx = Ctx(gaz=self.gaz, conv=d.conv)
+        new_header = [sanitize(h, hctx) for h in header]
+        has_pid = "PATIENTID" in d.col_types
+        first_name = d.col_types.index("NAME") if "NAME" in d.col_types else -1
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=d.delimiter, lineterminator="\n")
+        w.writerow(new_header)
+        for u, row in zip(d.units, body):
+            ctx = self.ctx_for(d, u)
+            out = []
+            for j, v in enumerate(row):
+                typ = d.col_types[j] if j < len(d.col_types) else "TEXT"
+                out.append(clean_field(typ, v, ctx, patient_slot=(not has_pid and j == first_name)))
+            if u.patient and not ctx.used_pseudonym:
+                u.patient = None          # pseudonym must appear inside the record, or we don't claim it
+            w.writerow(out)
+            self.counts.update(ctx.counts)
+        self.counts.update(hctx.counts)
+        return buf.getvalue()
+
+    def sanitize_json(self, d: Doc) -> str:
+        units = {u.loc: u for u in d.units}
+        file_ctx = self.ctx_for(d, units.get("doc"))
+        used = {}
+
+        def clean(o, path, ctx):
+            loc = "/" + "/".join(str(x).replace("~", "~0").replace("/", "~1") for x in path)
+            if loc in units and units[loc] is not None and loc != "/":
+                ctx = self.ctx_for(d, units[loc])
+                used[loc] = ctx
+            if isinstance(o, dict):
+                url = str(o.get("url", "")).lower()
+                if isinstance(o.get("valueString"), str) and re.search(r"name|mother|father|husband|guardian|relative|spouse", url):
+                    o = dict(o)
+                    o["valueString"] = clean_field("RELNAME", o["valueString"], ctx)
+                new = {}
+                for k, v in o.items():
+                    nk = sanitize(str(k), ctx) if isinstance(k, str) else k
+                    if nk in new:
+                        nk = f"{nk}_{len(new)}"
+                    typ = d.path_types.get(schema_path(path + (k,)), "TEXT")
+                    if typ == "DOB" and isinstance(d.data, dict) and d.data.get("resourceType"):
+                        ctx.counts["DOB"] += 1
+                        continue           # FHIR birthDate must be a valid date or absent
+                    new[nk] = clean(v, path + (k,), ctx)
+                return new
+            if isinstance(o, list):
+                return [clean(x, path + (i,), ctx) for i, x in enumerate(o)]
+            typ = d.path_types.get(schema_path(path), "TEXT")
+            key = last_key(path)
+            if isinstance(o, str) and key in ("id", "fullUrl", "reference") and UUIDISH.match(o):
+                return o
+            slot = typ == "NAME" and not any(t == "PATIENTID" for t in d.path_types.values())
+            return clean_field(typ, o, ctx, patient_slot=slot)
+
+        result = clean(d.data, (), file_ctx)
+        for u in d.units:
+            ctx = file_ctx if u.loc == "doc" else used.get(u.loc)
+            if u.patient and not (ctx and ctx.used_pseudonym):
+                u.patient = None
+            if ctx and ctx is not file_ctx:
+                self.counts.update(ctx.counts)
+        self.counts.update(file_ctx.counts)
+        return json.dumps(result, ensure_ascii=False, indent=2) + "\n"
+
+    def sanitize_text(self, d: Doc) -> str:
+        u = d.units[0]
+        ctx = self.ctx_for(d, u)
+        out = sanitize(d.data, ctx)
+        if u.patient and not ctx.used_pseudonym:
+            out = out.rstrip("\n") + f"\nPatient: {u.patient}\n"
+        self.counts.update(ctx.counts)
+        return out
+
+    def out_name(self, d: Doc) -> str:
+        p = PurePosixPath(d.rel)
+        ctx = Ctx(gaz=self.gaz)
+        stem = sanitize(p.stem, ctx)
+        if stem == normalize(p.stem):
+            return d.rel
+        safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem.replace("[", "").replace("]", "")).strip("_")
+        return str(p.with_name(f"{safe}_{short_tag(d.rel)}{p.suffix}"))
+
+    def write(self) -> list[dict]:
+        san = self.out / "sanitized"
+        files = []
+        for d in self.docs:
+            entry = {"input_sha256": d.sha}
+            if d.kind == "quarantine":
+                entry.update(output=None, status="quarantined", reason=d.data)
+                files.append(entry)
+                continue
+            try:
+                result = {"csv": self.sanitize_csv, "json": self.sanitize_json, "text": self.sanitize_text}[d.kind](d)
+                d.out_rel = self.out_name(d)
+                dest = san / d.out_rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(result, encoding="utf-8", newline="")
+                entry.update(output=f"sanitized/{d.out_rel}", status="sanitized")
+            except Exception as exc:  # noqa: BLE001 - fail safe, reason never holds content
+                d.kind = "quarantine"
+                entry.update(output=None, status="quarantined", reason="processing_error_" + type(exc).__name__)
+            files.append(entry)
+        return files

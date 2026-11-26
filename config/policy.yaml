@@ -1,0 +1,6 @@
+# Privacy policy. Every value here is a deliberate privacy-vs-utility choice (see README).
+age_band_years: 10         # 40-49; measured: 10y bands halve uniquely-identifiable people vs 5y
+date_shift_max_days: 180   # per-patient secret shift in [-180, 180], never 0
+pin_keep_digits: 3         # 229073 -> 229***
+keep_district: 1           # district stays (utility), village/tehsil/house/mohalla go
+min_group_size: 5          # groups smaller than this get coarser treatment (later layer)
