@@ -21,7 +21,7 @@ os.environ.setdefault("RAKSHA_SECRET", "eval")
 from secretward.detect import Ctx, sanitize         # noqa: E402
 from secretward.gazetteer import Gazetteer          # noqa: E402
 
-DATA = ROOT / "tests/data"
+DATA = ROOT / "tests/hinglish"
 CLINICAL = ["fever", "khansi", "nausea", "breathlessness", "100.4", "vomiting", "loose motions",
             "dizziness", "sore throat", "headache", "diabetes", "swelling", "pulse", "fatigue",
             "weakness", "allergy", "chest discomfort", "abdominal pain", "pain score 3 out of 10"]
