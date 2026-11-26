@@ -16,7 +16,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from . import dates
+from . import dates, vault
 from .detect import AGE_PATTERNS, ID_TOKEN, sanitize_header, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
 from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
@@ -201,6 +201,7 @@ class Pipeline:
         self.gaz = Gazetteer()
         self.counts = Counter()
         self.cluster_bands: dict = {}
+        self.vaulted = 0
 
     # pass 0 + 1 ----------------------------------------------------------
     def load(self) -> None:
@@ -720,6 +721,7 @@ class Pipeline:
             entry = {"input_sha256": d.sha}
             if d.kind == "quarantine":
                 entry.update(output=None, status="quarantined", reason=d.data)
+                self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)   # encrypted or not at all
                 files.append(entry)
                 continue
             try:
@@ -735,5 +737,6 @@ class Pipeline:
             except Exception as exc:  # noqa: BLE001 - fail safe, reason never holds content
                 d.kind = "quarantine"
                 entry.update(output=None, status="quarantined", reason="processing_error_" + type(exc).__name__)
+                self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)
             files.append(entry)
         return files

@@ -9,14 +9,14 @@ hospital records. Built for Yugaantar DevForge, Track 3 "Secret Wards".
 Use `python3`: many machines have no bare `python`.
 
 ```bash
-python3 -m pip install -r requirements.txt     # installs nothing: standard library only
+python3 -m pip install -r requirements.txt     # one optional package: cryptography (quarantine vault)
 RAKSHA_SECRET=<secret> python3 main.py --input <input dir> --output <empty output dir>
 ```
 
 **Fails loudly, never silently:** exit code 2 if Python is older than 3.9; exit code 3 if
 most files fail inside our own code (instead of quarantining everything and reporting success).
 
-No network access is used at run time. Standard library only: no third-party packages (Devanagari transliteration is built in, `src/secretward/translit.py`).
+No network access is used at run time. The pipeline itself is standard library only (Devanagari transliteration is built in, `src/secretward/translit.py`). The one package, `cryptography`, only encrypts quarantined files; if it is missing the run still succeeds and quarantined files are simply not kept.
 
 **Models declared:** one small classical-ML model **we trained ourselves**: an averaged-perceptron
 name classifier (`src/secretward/ner.py`, about 600 weights in `src/secretward/ner_weights.json`,
@@ -68,6 +68,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `src/secretward/link.py` | patient clustering with merge blockers |
 | `src/secretward/privacy.py` | HMAC pseudonyms, per-patient non-zero shifts, age bands, PIN prefix |
 | `src/secretward/pipeline.py` | orchestration, JSON/CSV/text handlers, quarantine, file renaming |
+| `src/secretward/vault.py` | encrypted quarantine vault (AES-256-GCM, per-file keys) |
 
 ## Privacy design (policy in `config/policy.yaml`)
 
@@ -98,7 +99,21 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 
 ## Security design
 
-* No intermediate data is written to disk: everything stays in memory, so there is nothing to encrypt at rest.
+Threat model: assume the server (and the output folder) is stolen one day.
+
+* **Encrypted quarantine vault.** A quarantined file is the riskiest thing we hold, because nothing
+  was removed from it. It is kept only as AES-256-GCM ciphertext in `output/quarantine/<sha256>.swv`
+  (the spec's allowed, unscanned folder), never under its original name, which can itself be PII.
+  Each file gets its own key and nonce, derived with HKDF-SHA256 from `RAKSHA_SECRET` and the file's
+  SHA-256: a leaked per-file key opens one file, not the vault. GCM authenticates, so a tampered
+  file refuses to open. If encryption is unavailable, nothing is written: plaintext is never a fallback.
+  `scripts/vault_check.py --check` proves exact restore, wrong-key refusal, tamper refusal and no
+  plaintext runs (7 / 7 on the practice data); `--open SHA --to PATH` is the authorised-operator restore.
+* **Keys kept away from data.** The only secret is `RAKSHA_SECRET`, held in the environment, never
+  printed, logged or written. The output folder holds ciphertext, HMAC pseudonyms and shifted dates;
+  none of them can be reversed without the secret.
+* No other intermediate data is written to disk: parsing, linking and cleaning happen in memory, and
+  the vault writes ciphertext only (via a temp file that is itself ciphertext).
 * The secret is read from the environment only and never printed or stored.
 * stdout prints counts only; a custom exception hook prints only the exception type (Python error
   messages can contain record values); quarantine reasons are fixed codes.
@@ -116,6 +131,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
 | `scripts/nocue_eval.py`, `scripts/train_ner.py` | blind no-cue name test; retrain the classifier |
 | `scripts/hinglish_eval.py` | 40 Hinglish nursing notes, names with no registration table |
+| `scripts/vault_check.py` | quarantine vault: exact restore, wrong key and tampering refused, no plaintext |
 | `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
 

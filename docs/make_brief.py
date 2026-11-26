@@ -47,8 +47,8 @@ PITCH = ("A privacy firewall that finds people no dictionary knows, in English, 
          "and proves its privacy with its own re-identification attacker.")
 
 ONE_PARA = (
-    "secret-ward is an offline, CPU-only, LLM-free pipeline in pure Python (standard library only, "
-    "Python 3.9+). It removes every identifier from a messy multi-hospital dump while keeping clinical "
+    "secret-ward is an offline, CPU-only, LLM-free pipeline in pure Python (standard library, plus "
+    "<i>cryptography</i> for the quarantine vault; Python 3.9+). It removes every identifier from a messy multi-hospital dump while keeping clinical "
     "values exact, gives each patient one keyed pseudonym across files, languages and hospitals, and "
     "generalises quasi-identifiers only where our own attack shows a patient is still exposed. The key "
     "idea: <b>nothing is memorised</b>. Column meanings are inferred from their values, and the name, "
@@ -114,12 +114,12 @@ TRADEOFF = (
     "medical values and left A5 flat. Two independently built attackers (ours and QA's) agree.")
 
 SECURITY = (
-    "Assume breach: no raw or intermediate data is ever written to disk (everything stays in memory), so "
-    "there is nothing to decrypt at rest. RAKSHA_SECRET is read from the environment only and never printed or "
-    "stored; pseudonyms and shifts are keyed HMACs, so a leaked release cannot be reversed or linked to a release "
-    "with another secret. stdout prints counts only; a custom exception hook prints only the error type (Python "
-    "messages can contain record values); report reasons are fixed codes; files are identified by SHA-256, never "
-    "by name; renamed files get a keyed tag. Quarantined files never reach sanitized/.")
+    "Assume breach. Quarantined files, the riskiest thing we hold, are kept only as <b>AES-256-GCM ciphertext</b> "
+    "named by SHA-256 (never the original name); each file has its own key and nonce derived with HKDF-SHA256 from "
+    "RAKSHA_SECRET, so one leaked key opens one file, and tampering is detected. No plaintext fallback: without the "
+    "library nothing is kept. No other intermediate data touches disk. RAKSHA_SECRET lives only in the environment, "
+    "never printed or stored; pseudonyms and shifts are keyed HMACs, irreversible without it. stdout prints counts "
+    "only; an exception hook prints only the error type; report reasons are fixed codes.")
 
 TESTING = (
     "<b>How we tested.</b> 22 meaning-trap cases + header round-trips, three held-out variants, our attacker, the "
