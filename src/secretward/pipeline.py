@@ -22,7 +22,8 @@ from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
 from .link import Evidence, Linker, name_key, norm_gender, norm_id
 from .normalize import normalize
-from .privacy import pseudonym, shift_days, short_tag
+from .privacy import cluster_band, pseudonym, shift_days, short_tag, widen
+from .rules import POLICY
 
 TEXT_EXT = {".txt", ".md", ".log", ".text"}
 MAX_DEPTH = 200
@@ -195,6 +196,7 @@ class Pipeline:
         self.docs: list[Doc] = []
         self.gaz = Gazetteer()
         self.counts = Counter()
+        self.cluster_bands: dict = {}
 
     # pass 0 + 1 ----------------------------------------------------------
     def load(self) -> None:
@@ -345,10 +347,45 @@ class Pipeline:
                 d.units.append(u)
         all_units = [(u.uid, u.ev) for d in self.docs for u in d.units]
         clusters = Linker(all_units).run()
+        ages: dict[str, list[int]] = {}
         for d in self.docs:
             for u in d.units:
                 u.cluster = clusters.get(u.uid)
                 u.patient = pseudonym(u.cluster) if u.cluster else None
+                if u.cluster:
+                    ages.setdefault(u.cluster, []).extend(u.ev.ages)
+        self.cluster_bands = {k: cluster_band(v) for k, v in ages.items()}
+        self._k_anonymity()
+
+    def _k_anonymity(self) -> None:
+        """Local generalisation: coarsen only patients in small (gender, band, district) groups.
+
+        Measured with scripts/attack.py: gender + 10-year band + district alone singles out
+        rare people (a 92-year-old man, a 5-year-old boy). Everyone else keeps full detail.
+        """
+        k = int(POLICY.get("min_group_size", 3))
+        info = {}
+        for d in self.docs:
+            for u in d.units:
+                if not u.cluster:
+                    continue
+                g, dist = info.setdefault(u.cluster, (set(), set()))
+                g |= u.ev.genders
+                dist |= u.ev.districts
+        def key(c, band):
+            g, dist = info[c]
+            return (tuple(sorted(g)), band, tuple(sorted(dist)))
+        groups = Counter(key(c, self.cluster_bands.get(c)) for c in info)
+        self.hidden_loc = set()
+        for c in sorted(info):
+            if groups[key(c, self.cluster_bands.get(c))] < k:
+                self.cluster_bands[c] = widen(self.cluster_bands.get(c))
+                self.counts["K_ANON_WIDENED"] += 1
+        groups = Counter(key(c, self.cluster_bands.get(c)) for c in info)
+        for c in sorted(info):
+            if groups[key(c, self.cluster_bands.get(c))] < int(POLICY.get("hide_location_below", 2)):
+                self.hidden_loc.add(c)
+                self.counts["K_ANON_LOCATION_HIDDEN"] += 1
 
     @staticmethod
     def _json_names(pairs) -> list[str]:
@@ -401,6 +438,8 @@ class Pipeline:
                 m = re.match(r"\s*(\d{1,3})", s)
                 if m:
                     ev.ages.append(int(m.group(1)))
+            elif typ == "DISTRICT" and s.strip():
+                ev.districts.add(s.strip().lower())
         for n in names or []:
             k = name_key(n)
             if k:
@@ -452,6 +491,8 @@ class Pipeline:
                   pseudonym=u.patient if u else None)
         if u:
             ctx.own_ids = {k[3:] for k in u.ev.keys if k.startswith("ID:")}
+            ctx.band = self.cluster_bands.get(u.cluster) if u.cluster else cluster_band(u.ev.ages)
+            ctx.hide_location = u.cluster in getattr(self, "hidden_loc", set())
         return ctx
 
     def sanitize_csv(self, d: Doc) -> str:

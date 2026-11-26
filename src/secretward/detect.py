@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from . import dates
 from .gazetteer import DEVA, Gazetteer, skeleton
 from .normalize import normalize
-from .privacy import age_band, pin_prefix
-from .rules import (DOCTOR_TITLES, HON_AFTER, HON_BEFORE, LABELS_NAME, RELATIONS, SAFE_WORDS,
+from .privacy import age_band, band_text, pin_prefix
+from .rules import (DOCTOR_TITLES, GENERIC_TOKENS, HON_AFTER, HON_BEFORE, LABELS_NAME, RELATIONS, SAFE_WORDS,
                     TRIGGERS)
 
 L = r"[A-Z][a-zA-Z'’]*\.?"                       # one Latin name token (Title or CAPS)
@@ -44,6 +44,13 @@ class Ctx:
     counts: Counter = field(default_factory=Counter)
     found_names: list = field(default_factory=list)   # patient-label names (for linking)
     own_ids: set = field(default_factory=set)         # this record's own hospital IDs
+    band: tuple | None = None                         # the patient's single age band, if known
+    hide_location: bool = False                       # small group: district + PIN prefix hidden too
+
+    def age_text(self, age: int) -> str:
+        if self.band and self.band[0] <= age <= self.band[1]:
+            return band_text(self.band)
+        return age_band(age)
 
 
 # ---------------------------------------------------------------------------- helpers
@@ -218,7 +225,7 @@ def clean_ages(text: str, ctx: Ctx) -> str:
             if age > 120:
                 return m.group(0)
             ctx.counts["AGE_BANDED"] += 1
-            return m.group(1) + age_band(age)
+            return m.group(1) + ctx.age_text(age)
         text = rx.sub(sub, text)
     return text
 
@@ -239,10 +246,10 @@ def clean_address(text: str, ctx: Ctx) -> str:
         dm = DISTRICT.search(body)
         pm = PIN6.search(body)
         parts = ["[ADDRESS]"]
-        if dm:
+        if dm and not ctx.hide_location:
             parts.append(dm.group(0).strip())
         out = ", ".join(parts)
-        if pm:
+        if pm and not ctx.hide_location:
             out += " - " + pin_prefix(pm.group(1))
         ctx.counts["ADDRESS"] += 1
         return m.group(1) + out
@@ -250,9 +257,12 @@ def clean_address(text: str, ctx: Ctx) -> str:
     text, n = ADDR_PARTS.subn("[ADDRESS]", text); ctx.counts["ADDRESS"] += n
     text, n = ctx.gaz.rx_place.subn("[ADDRESS]", text); ctx.counts["VILLAGE"] += n
     for pin in sorted(ctx.gaz.pins):
-        text, n = re.subn(rf"(?<!\d){pin}(?!\d)", pin_prefix(pin), text)
+        text, n = re.subn(rf"(?<!\d){pin}(?!\d)", "[PIN]" if ctx.hide_location else pin_prefix(pin), text)
         ctx.counts["PIN"] += n
-    text = re.sub(r"(?i)(\bpin(?:\s*code)?\s*[:\-]?\s*)(\d{6})(?!\d)", lambda m: m.group(1) + pin_prefix(m.group(2)), text)
+    text = re.sub(r"(?i)(\bpin(?:\s*code)?\s*[:\-]?\s*)(\d{6})(?!\d)",
+                  lambda m: m.group(1) + ("[PIN]" if ctx.hide_location else pin_prefix(m.group(2))), text)
+    if ctx.hide_location:
+        text = DISTRICT.sub("[ADDRESS]", text)
     return text
 
 
@@ -263,6 +273,13 @@ TRIG_RX = re.compile(rf"(?<![A-Za-z])((?i:{ALT(TRIGGERS)})\s*[:\-]?\s*(?:\(\s*)?
 HON_B_RX = re.compile(rf"(?<![A-Za-z])((?i:{ALT(sorted(HON_BEFORE, key=len, reverse=True))})\.?\s+)({SPAN})")
 HON_A_RX = re.compile(rf"(?<![A-Za-zऀ-ॿ])({L}(?: {L}){{0,2}}|{DV}(?: {DV})?)(\s+(?i:{ALT(sorted(HON_AFTER, key=len, reverse=True))}))(?![A-Za-zऀ-ॿ])")
 PRE_REL_RX = re.compile(rf"(?<![A-Za-z\u0900-\u097F])({LATIN_SPAN}|{DEVA_SPAN}),?\s+(?=(?i:[SDW]/o|पत्नी|पुत्र|पुत्री)\b)")
+_GEN = "|".join(re.escape(g.rstrip(".")) for g in sorted(GENERIC_TOKENS, key=len, reverse=True))
+GEN_AFTER = re.compile(rf"\[NAME\](?:[\s_]+(?i:{_GEN})\.?(?![A-Za-z]))+")
+GEN_BEFORE = re.compile(rf"(?<![A-Za-z])(?:(?i:{_GEN})\.?[\s_]+)+\[NAME\]")
+# log lines: "14:00 - Parvathi Pandeya - K/C/O ..." (timestamp, a name between dashes)
+LOG_LINE = re.compile(rf"(?m)(^\s*\d{{1,2}}:\d{{2}}(?:\s*[AaPp][Mm])?\s*[-–]\s*)({LATIN_SPAN}|{DEVA_SPAN})(?=\s*[-–:,]\s)")
+# a name right before a clinical history marker: "Zenab Bano - K/C/O bell's palsy"
+BEFORE_CLINICAL = re.compile(rf"(?<![A-Za-z])({LATIN_SPAN})(?=\s*[-–:,]\s*(?i:k/c/o|c/o|h/o|known case)\b)")
 NEAR_PHONE = re.compile(r"(?<![A-Za-z])([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})(?=[^\n\[\]]{0,40}\[PHONE\])")
 NONPERSON_BEFORE = ("drug", "test", "medicine", "hospital", "facility", "lab", "doctor", "consultant",
                    "package", "procedure", "file", "company", "insurer", "scheme", "ward", "panel", "user")
@@ -301,6 +318,20 @@ def clean_names(text: str, ctx: Ctx) -> str:
         ctx.found_names.append(span)
         return _replace_span(ctx, "PATIENT_NAME", patient=True) + m.group(0)[len(span):]
     text = PRE_REL_RX.sub(pre_rel, text)
+    def log_name(m):
+        span = _trim_span(m.group(2))
+        if not span or not _is_person(span) or span.lower().startswith(("patient", "next", "morning")):
+            return m.group(0)
+        ctx.found_names.append(span)
+        return m.group(1) + _replace_span(ctx, "PATIENT_NAME") + m.group(2)[len(span):]
+    text = LOG_LINE.sub(log_name, text)
+
+    def before_clinical(m):
+        span = m.group(1)
+        if not _is_person(span) or len(span.split()) < 2:
+            return m.group(0)
+        return _replace_span(ctx, "PATIENT_NAME")
+    text = BEFORE_CLINICAL.sub(before_clinical, text)
     text = REL_RX.sub(generic("RELATIVE_NAME"), text)
     text = TRIG_RX.sub(generic("OTHER_NAME"), text)
     text = HON_B_RX.sub(generic("PATIENT_NAME"), text)
@@ -336,6 +367,10 @@ def clean_names(text: str, ctx: Ctx) -> str:
         return "[NAME]"
     text = NEAR_PHONE.sub(near_phone, text)
     text = re.sub(r"\[NAME\](?:[\s_]+\[NAME\])+", "[NAME]", text)
+    # name parts that are "generic" on their own (Singh, Bano, Devi) still help an attacker
+    # when they sit next to a removed name: absorb them into the placeholder
+    text = GEN_AFTER.sub("[NAME]", text)
+    text = GEN_BEFORE.sub("[NAME]", text)
     return text
 
 

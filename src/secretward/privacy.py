@@ -53,3 +53,43 @@ def pin_prefix(pin: str) -> str:
     if len(digits) != 6:
         return "[PIN]"
     return digits[:k] + "*" * (6 - k)
+
+
+def cluster_band(ages: list[int]) -> tuple[int, int] | None:
+    """One truthful band for ALL records of a patient.
+
+    If a patient is 49 in one file and 50 in another, per-record banding gives "40-49" and
+    "50-59"; an attacker who pools both learns the age is 49-50. Instead we pick a single
+    10-year window that contains every stated age (grid offset 0, then 5), and widen to
+    20 years only if no 10-year window fits.
+    """
+    ages = sorted(a for a in ages if 0 <= a <= 120)
+    if not ages:
+        return None
+    lo_a, hi_a = ages[0], ages[-1]
+    if lo_a >= 90:
+        return (90, 200)
+    w = int(POLICY.get("age_band_years", 10))
+    for off in (0, w // 2):
+        lo = ((lo_a - off) // w) * w + off
+        if hi_a <= lo + w - 1:
+            return (lo, lo + w - 1)
+    lo = (lo_a // w) * w
+    return (lo, max(lo + 2 * w - 1, ((hi_a // w) + 1) * w - 1))
+
+
+def band_text(b: tuple[int, int]) -> str:
+    return f"{b[0]}+" if b[1] >= 150 else f"{b[0]}-{b[1]}"
+
+
+def widen(b: tuple[int, int] | None) -> tuple[int, int] | None:
+    """Coarser truthful band for patients in small groups (k-anonymity, local only)."""
+    if b is None:
+        return None
+    if b[0] >= 80:
+        return (80, 200)
+    if b[1] < 20:
+        return (0, 19)
+    lo = (b[0] // 20) * 20
+    hi = max(lo + 19, ((b[1] // 20) + 1) * 20 - 1)
+    return (lo, hi)

@@ -3,4 +3,6 @@ age_band_years: 10         # 40-49; measured: 10y bands halve uniquely-identifia
 date_shift_max_days: 180   # per-patient secret shift in [-180, 180], never 0
 pin_keep_digits: 3         # 229073 -> 229***
 keep_district: 1           # district stays (utility), village/tehsil/house/mohalla go
-min_group_size: 5          # groups smaller than this get coarser treatment (later layer)
+min_group_size: 3          # k: a patient whose (gender, age band, district) group in our release has
+                           # fewer patients gets a 20-year band
+hide_location_below: 2     # after widening, groups smaller than this also hide district + PIN prefix (0 = never)

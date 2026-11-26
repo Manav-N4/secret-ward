@@ -66,6 +66,12 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
   so intervals and stay lengths are exact while a global un-shift is impossible.
 * **Ages:** 10-year bands. On the practice registry, gender + 5-year band + district leaves
   101/240 people unique; 10-year bands leave 50/240. DOB is removed (it would reveal the exact age).
+* **One band per patient:** every record of a linked patient gets the SAME truthful band (a
+  10-year window containing all their stated ages). Per-record bands let an attacker who pools
+  "40-49" and "50-59" learn the age is 49-50.
+* **Local k-anonymity:** patients whose (gender, band, district) group in the release has fewer
+  than `min_group_size` patients get a 20-year band; if still alone, district and PIN prefix are
+  hidden too. Only those patients are coarsened; everyone else keeps full detail.
 * **Location:** house, mohalla, village, tehsil removed; district kept; PIN reduced to 3 digits
   (adds no identifying power beyond district on the practice data).
 * **Replacements:** typed placeholders (`[NAME]`, `[PHONE]` …), never fake names (a fake name can
@@ -82,6 +88,15 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 * Files we cannot parse safely (corrupt, truncated, too deeply nested, wrong format, binary, PDF, images, XML)
   are quarantined, never copied.
 
+## Dev tools (practice data only, never run on hidden data)
+
+| Script | What it measures |
+|---|---|
+| `bash scripts/check_all.sh [kit] [--full]` | the whole routine: pipeline, contract, self-check, traps, attacker, (held-out), submission check |
+| `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw |
+| `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
+| `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
+
 ## Measured on the practice data (`check_dev.py`)
 
 | Metric | Starter | secret-ward v0.1 |
@@ -92,10 +107,21 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | Linking precision / recall | 0 / 0 | 1.00 / 0.82 |
 | Runtime | ~2 s | ~2 s |
 
+Privacy, measured with `scripts/attack.py` (our approximation of the official arena; lower is better):
+
+| Attack | Raw input | v0.1 | v0.2 (one band per patient + local k-anonymity) |
+|---|---|---|---|
+| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.039 |
+| A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
+| A5 targeted attack success | 100% | 51.4% | 49.0% |
+
+Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569.
+
 ## Known limitations
 
 * Tuned and measured on the practice data so far; the unseen-format round will expose gaps.
 * Free-text names with no label, honorific, relation marker, trigger or gazetteer match are missed.
 * Cross-script matching uses a coarse phonetic skeleton; rare spellings can slip.
 * XML/PDF/image files are quarantined rather than cleaned.
-* Rare-diagnosis records are not yet coarsened further (planned).
+* Rare-diagnosis records are not yet coarsened further (planned); A5 (targeted attack) is our weakest privacy number.
+* With only ~50 patients per release, local k-anonymity coarsens many patients; on larger releases fewer will be affected.

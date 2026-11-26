@@ -147,14 +147,17 @@ def clean_field(typ: str, value, ctx: Ctx, patient_slot: bool = False):
         m = AGE_V.match(s)
         if m and int(m.group(1)) <= 120:
             ctx.counts["AGE_BANDED"] += 1
-            return age_band(int(m.group(1))) + (m.group(2) if m.group(2).strip() else "")
+            return ctx.age_text(int(m.group(1))) + (m.group(2) if m.group(2).strip() else "")
         return sanitize(s, ctx)
     if typ in ("ADDRESS", "VILLAGE", "TEHSIL"):
         ctx.counts["ADDRESS"] += 1
         return "[ADDRESS]"
     if typ == "PIN":
         ctx.counts["PIN"] += 1
-        return pin_prefix(s)
+        return "[PIN]" if ctx.hide_location else pin_prefix(s)
+    if typ == "DISTRICT" and ctx.hide_location:
+        ctx.counts["DISTRICT_HIDDEN"] += 1
+        return "[DISTRICT]"
     if typ in ("GENDER", "DISTRICT", "RELATION", "DOCTOR"):
         return value
     if isinstance(value, (int, float)):
