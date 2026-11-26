@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from . import dates
-from .detect import Ctx, _is_person, sanitize
+from .detect import Ctx, _is_person, clean_digits, sanitize
 from .gazetteer import DEVA
 from .privacy import age_band, pin_prefix
 from .rules import HEADER_HINTS, PLACE_ENDS, PLACE_WORDS
@@ -136,6 +136,13 @@ def clean_field(typ: str, value, ctx: Ctx, patient_slot: bool = False):
     if value is None or isinstance(value, bool):
         return value
     if isinstance(value, (int, float)) and typ not in ("AGE", "PHONE", "AADHAAR", "PIN", "PATIENTID", "OTHERID", "ABHA"):
+        # an identifier stored as a JSON NUMBER under a key we do not recognise
+        # ("uid_sankhya": 902115225016) is still an Aadhaar / ABHA / mobile: same digit rules
+        # as text. 10+ digits only, so lab values, ages, counts and years are never touched.
+        if isinstance(value, int) and len(str(abs(value))) >= 10:
+            out = clean_digits(str(value), ctx)
+            if out != str(value):
+                return out
         return value
     s = str(value)
     if not s.strip():

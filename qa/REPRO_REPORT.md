@@ -1,4 +1,25 @@
-# QA reproducibility report: secret-ward on toolkit dev/ data
+# QA reproducibility report
+
+## Current status (re-run on main, 2026-11-27)
+| check | result |
+|---|---|
+| practice set (check_dev) | 0 / 3230 leaked, 0 / 4 canaries, medical 4826 / 4855 (99.4%), linking P 1.00 R 1.00 |
+| `mutate.py`, 8 seeds (1, 7, 42, 99, 123, 555, 1337, 2026) | **0 / 3230 leaked on every seed**, medical 99.4%, linking 1.00 / 1.00 |
+| `attack_sim.py`, raw → sanitized | A3 risk 0.648 → 0.028; re-identified 97.9% → 8.3%; A5 100% → 47.6% |
+
+Bug found by this harness and fixed: seeds 1 and 42 renamed `aadhaar` to `uid_sankhya` in a JSON
+file where the Aadhaar is stored as a **number** (`902115225016`); numbers under unknown keys were passed
+through. Integers with 10 or more digits now go through the same ID rules as text (trap test added).
+
+Reproduce:
+```bash
+python3 qa/mutate.py --dev ../Secret-Wards-ToolKit/dev --out qa/mutated/s42 --seed 42
+RAKSHA_SECRET=practice python3 main.py --input qa/mutated/s42/input --output qa/out/s42
+python3 ../Secret-Wards-ToolKit/check_dev.py --output qa/out/s42 --truth qa/mutated/s42/truth/truth.json
+python3 qa/attack_sim.py --kit ../Secret-Wards-ToolKit --output out     # add --raw for the baseline
+```
+
+## Original report (2026-11-26, historical)
 
 > **Historical record, not a live bug report.** Gaps 1 (bare `python`/`pip`) and 2 (no Python version stated) were fixed on main by the hotfix merge `732abee`, which has been on main since `1e5e012`. `raksha.toml` now uses `python3`, and the README says "Requires Python 3.9 or newer". Re-verified on `1e5e012`: `check_submission.py --run` prints READY TO SUBMIT under stock macOS Python 3.9.6. Logs referenced below live in the git-ignored `qa/logs/` and are not in the repo.
 

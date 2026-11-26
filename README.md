@@ -3,6 +3,29 @@
 An offline, CPU-only, LLM-free privacy firewall for multilingual (English, Hindi, Hinglish)
 hospital records. Built for Yugaantar DevForge, Track 3 "Secret Wards".
 
+## What makes it different (USP)
+
+1. **Nothing is memorised, so it works on data it has never seen.** Column and key meanings are
+   inferred from the *values* (a 12-digit number is treated as an Aadhaar whatever the column is
+   called). Names, places and IDs are learned at run time from the input itself. Our name classifier
+   never sees the word it is judging, only its shape, ending and neighbours. Proof: renamed headers,
+   new formats, 8 random mutation seeds and 40 Hinglish notes all give **0 leaks**.
+2. **Our own trained model, not a borrowed one.** A ~600-weight averaged perceptron we trained on
+   synthetic data. It runs on CPU in microseconds, with no pretrained model, no LLM and no internet.
+   It finds names that have no label or cue: **0% → 88%** on a blind test, with 100% of drug names kept.
+3. **One patient, one pseudonym, never two people merged.** Linking works across files, hospitals and
+   scripts (Devanagari ↔ Latin). Merge blockers (gender, age gap, name sound) and a guard against
+   multi-patient records give **precision 1.00, recall 1.00, 0 wrong merges**.
+4. **Privacy measured by attack, not assumed.** Two independently built attackers (ours, and our
+   QA lead's from the published attack spec) agree: re-identification **98% → 8%**, record-linkage
+   risk **0.65 → 0.03**. Generalisation (wider age band, hidden location) is applied only to the
+   patients the attack shows are still exposed, so everyone else keeps more useful data.
+5. **Medical values stay exact.** 99.4% of the practice set's medical values survive byte for byte.
+   Drug names, lab ranges, doses and durations are protected by veto lists and shape rules.
+6. **Fail-safe by design.** Unprocessable files are quarantined as AES-256-GCM ciphertext, never as
+   copies. Logs carry only counts. Exit codes are loud. Output is deterministic and identical on
+   Python 3.9 and 3.13.
+
 ## Setup and run
 
 **Requires Python 3.9 or newer** (tested on 3.9, 3.11, 3.12 and 3.13 with identical results).
@@ -131,6 +154,7 @@ Threat model: assume the server (and the output folder) is stolen one day.
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
 | `scripts/nocue_eval.py`, `scripts/train_ner.py` | blind no-cue name test; retrain the classifier |
 | `scripts/hinglish_eval.py` | 40 Hinglish nursing notes, names with no registration table |
+| `qa/mutate.py`, `qa/attack_sim.py` | independent QA: format-mutation harness (rewrites truth too), second attacker |
 | `scripts/vault_check.py` | quarantine vault: exact restore, wrong key and tampering refused, no plaintext |
 | `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
@@ -166,6 +190,16 @@ started the second line of a note was judged with the previous line as context (
 Held-out (`scripts/heldout.py`): without registration tables 0 / 2263 PII leaked; free text only 0 / 569;
 every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00; phones, Aadhaar,
 IDs, DOBs, labels and relation markers rewritten into new formats 0 / 3230, linking 1.00 / 1.00.
+
+Independent QA (`qa/`, built by our QA lead without reading our detection code):
+* `qa/mutate.py` rewrites the practice set (headers and JSON keys renamed into Hinglish, date order
+  swapped, "Last, First" and "Md." name forms, FHIR identifier systems swapped: about 1,500 changes
+  per seed) **and rewrites the answer key to match**, so a leak in a new form is still counted.
+  Over 8 seeds: **0 / 3230 leaked on every seed**, medical 99.4%, linking 1.00 / 1.00. Two seeds
+  found one real leak first (an Aadhaar stored as a JSON number under an unknown key, `"uid_sankhya"`),
+  fixed: numbers with 10 or more digits now go through the same ID rules as text.
+* `qa/attack_sim.py`, a second attacker: raw → ours, A3 record risk 0.648 → 0.028, patients
+  re-identified 97.9% → 8.3%, A5 targeted success 100% → 47.6%.
 
 ## Known limitations
 
