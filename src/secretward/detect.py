@@ -78,6 +78,17 @@ def _is_person(span: str) -> bool:
     return all(t[:1].isupper() or DEVA.search(t) for t in toks)
 
 
+def _is_person_lower(span: str, ctx) -> bool:
+    """Lowercase names ("name: rahul sharma") are accepted ONLY after a strong cue (an explicit
+    name label, s/o-w/o-d/o, or a title). Everywhere else lowercase words are ordinary text:
+    accepting them globally turned "Presenting complaints:" and "DM/HTN" into names."""
+    toks = span.split()
+    if not toks or len(toks) > 3 or not span.islower():
+        return False
+    return all(len(t) >= 3 and t.isalpha() and t not in SAFE_WORDS and t not in COMMON_LOWER
+               and t not in ctx.gaz.medical for t in toks)
+
+
 def _replace_span(ctx: Ctx, kind: str, patient: bool = False) -> str:
     ctx.counts[kind] += 1
     if patient and ctx.pseudonym and not ctx.used_pseudonym:
@@ -291,6 +302,18 @@ LOG_LINE = re.compile(rf"(?m)(^\s*\d{{1,2}}:\d{{2}}(?:\s*[AaPp][Mm])?\s*[-–]\s
 # a name right before a clinical history marker: "Zenab Bano - K/C/O bell's palsy"
 BEFORE_CLINICAL = re.compile(rf"(?<![A-Za-z])({LATIN_SPAN})(?=\s*[-–:,]\s*(?i:k/c/o|c/o|h/o|known case)\b)")
 NEAR_PHONE = re.compile(r"(?<![A-Za-z])([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})(?=[^\n\[\]]{0,40}\[PHONE\])")
+L_LOW = r"[a-z][a-z'’]*"
+LOW_SPAN = rf"{L_LOW}(?: {L_LOW}){{0,2}}"
+COMMON_LOWER = {"the", "and", "for", "with", "was", "has", "had", "not", "are", "his", "her", "him", "she",
+                "patient", "pt", "admitted", "discharged", "informed", "advised", "stable", "known", "case",
+                "hai", "tha", "thi", "the", "aur", "nahi", "abhi", "kal", "aaj", "ko", "ne", "ka", "ki", "ke",
+                "se", "mein", "par", "bhi", "wala", "wali", "sir", "madam", "unknown", "nil", "none", "same",
+                "above", "below", "self", "complaints", "complaint", "history", "details"}
+LOW_NAME_LABELS = [x for x in LABELS_NAME if any(w in x for w in ("name", "naam", "नाम"))]
+LOW_LABEL_RX = re.compile(rf"(?<![A-Za-z])((?i:{ALT(sorted(LOW_NAME_LABELS, key=len, reverse=True))})\s*[:\-–]\s*)({LOW_SPAN})")
+LOW_REL_RX = re.compile(r"(?<![A-Za-z/])((?i:s/o|d/o|w/o|son of|daughter of|wife of|husband of)\.?\s*[:\-]?\s*)"
+                        rf"({LOW_SPAN})")
+LOW_HON_RX = re.compile(r"(?<![A-Za-z])((?i:shri|smt|shrimati|mr|mrs|ms|km|kumari)\.?\s+)" rf"({LOW_SPAN})")
 NONPERSON_BEFORE = ("drug", "test", "medicine", "hospital", "facility", "lab", "doctor", "consultant",
                    "package", "procedure", "file", "company", "insurer", "scheme", "ward", "panel", "user")
 RELATIVE_BEFORE = ("father", "husband", "guardian", "mother", "pita", "pati", "relative", "attendant",
@@ -343,6 +366,28 @@ def clean_names(text: str, ctx: Ctx) -> str:
         return _replace_span(ctx, "PATIENT_NAME")
     text = BEFORE_CLINICAL.sub(before_clinical, text)
     text = REL_RX.sub(generic("RELATIVE_NAME"), text)
+
+    def lower_cue(kind, patient=False):
+        def sub(m):
+            full = m.group(2)
+            keep = []
+            for t in full.split(" "):              # stop at the first ordinary/medical word
+                if t in SAFE_WORDS or t in COMMON_LOWER or t in ctx.gaz.medical:
+                    break
+                keep.append(t)
+            span = " ".join(keep)
+            if not span or not _is_person_lower(span, ctx):
+                return m.group(0)
+            before = text[max(0, m.start() - 20):m.start()].lower()
+            if any(w in before for w in NONPERSON_BEFORE):
+                return m.group(0)
+            if patient:
+                ctx.found_names.append(span)
+            return m.group(1) + _replace_span(ctx, kind, patient=patient) + full[len(span):]
+        return sub
+    text = LOW_LABEL_RX.sub(lower_cue("PATIENT_NAME", patient=True), text)
+    text = LOW_REL_RX.sub(lower_cue("RELATIVE_NAME"), text)
+    text = LOW_HON_RX.sub(lower_cue("PATIENT_NAME"), text)
     text = TRIG_RX.sub(generic("OTHER_NAME"), text)
     text = HON_B_RX.sub(generic("PATIENT_NAME"), text)
 
