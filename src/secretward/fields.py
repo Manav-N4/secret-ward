@@ -138,7 +138,13 @@ def clean_field(typ: str, value, ctx: Ctx, patient_slot: bool = False):
     if not s.strip():
         return value
     if typ == "MEDICAL":
-        return sanitize(s, ctx) if re.search(r"\d{5,}|@", s) else value
+        if re.search(r"\d{5,}|@", s):
+            return sanitize(s, ctx)
+        if ctx.rare is not None:
+            if re.fullmatch(r"[A-TV-Z]\d{2}(?:\.\d{1,2})?", s.strip()):
+                return ctx.rare.generalise_code(s.strip(), ctx.counts)
+            return ctx.rare.generalise(s, ctx.counts)
+        return value
     if typ == "NAME":
         if s.strip().lower().startswith(("dr ", "dr.")):
             return value

@@ -61,7 +61,16 @@ def place_suffixes() -> tuple[tuple[str, ...], set[str]]:
     return tuple(sorted(ends, key=len, reverse=True)), words
 
 
+def icd_chapters() -> list[tuple[str, str, str]]:
+    out = []
+    for line in _lines("icd_chapters.txt"):
+        a, b, label = line.split("\t")
+        out.append((a.strip(), b.strip(), label.strip()))
+    return out
+
+
 POLICY = load_policy()
+ICD_CHAPTERS = icd_chapters()
 PLACE_ENDS, PLACE_WORDS = place_suffixes()
 LABELS_NAME = sorted(word_set("labels_name.txt"), key=len, reverse=True)
 RELATIONS = sorted(word_set("relations.txt"), key=len, reverse=True)

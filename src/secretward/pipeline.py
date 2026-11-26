@@ -24,6 +24,7 @@ from .link import Evidence, Linker, name_key, norm_gender, norm_id
 from .normalize import normalize
 from .privacy import cluster_band, pseudonym, shift_days, short_tag, widen
 from .rules import POLICY
+from .conditions import ICD, RareConditions, mentions_in_text
 
 TEXT_EXT = {".txt", ".md", ".log", ".text"}
 MAX_DEPTH = 200
@@ -369,6 +370,66 @@ class Pipeline:
                     ages.setdefault(u.cluster, []).extend(u.ev.ages)
         self.cluster_bands = {k: cluster_band(v) for k, v in ages.items()}
         self._k_anonymity()
+        self._rare_conditions()
+
+    def _rare_conditions(self) -> None:
+        """Count, per patient, every diagnosis/procedure mention; the rare ones get their
+        ICD chapter instead of the exact name (see conditions.py)."""
+        rc = RareConditions()
+        for d in self.docs:
+            for u in d.units:
+                who = u.cluster or u.uid
+                if d.kind == "text":
+                    for c, code in mentions_in_text(normalize(d.data)):
+                        rc.add(c, code, who)
+                elif d.kind == "csv":
+                    i = int(u.loc[4:])
+                    row = d.data[1 + i]
+                    codes = [v for v in row if ICD.fullmatch(v.strip() or "-")]
+                    for j, v in enumerate(row):
+                        t = d.col_types[j] if j < len(d.col_types) else "TEXT"
+                        hdr = d.data[0][j].lower() if j < len(d.data[0]) else ""
+                        if t == "MEDICAL" and any(w in hdr for w in ("procedure", "diagnos", "condition", "disease")):
+                            rc.add(v, codes[0] if codes else None, who)
+                        elif t == "TEXT":
+                            for c, code in mentions_in_text(normalize(v)):
+                                rc.add(c, code, who)
+                elif d.kind == "json":
+                    sub = d.data if u.loc == "doc" else self._at(d.data, u.loc)
+                    for node in self._dicts(sub):
+                        code = node.get("code")
+                        disp = node.get("display")
+                        if isinstance(code, str) and isinstance(disp, str) and ICD.fullmatch(code.strip()):
+                            rc.add(disp, code.strip(), who)
+                        for k in ("procedure", "diagnosis", "condition"):
+                            if isinstance(node.get(k), str):
+                                rc.add(node[k], None, who)
+                        for k, v in node.items():
+                            if isinstance(v, str) and k not in ("display", "code"):
+                                for c, cd in mentions_in_text(normalize(v)):
+                                    rc.add(c, cd, who)
+        rc.finalise(int(POLICY.get("rare_condition_max_patients", 1)))
+        self.rare = rc
+        self.counts["RARE_CONDITION_TYPES"] = len(rc.rare)
+
+    @staticmethod
+    def _at(data, loc):
+        cur = data
+        for part in loc.strip("/").split("/"):
+            part = part.replace("~1", "/").replace("~0", "~")
+            cur = cur[int(part)] if isinstance(cur, list) else cur[part]
+        return cur
+
+    @staticmethod
+    def _dicts(o):
+        stack = [o]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, dict):
+                yield x
+                stack.extend(x.values())
+            elif isinstance(x, list):
+                stack.extend(x)
 
     def _drop_multi_patient_bridges(self) -> None:
         """A record carrying several DIFFERENT patient IDs of one hospital (an index, a ward
@@ -535,6 +596,7 @@ class Pipeline:
             ctx.own_ids = {k[3:] for k in u.ev.keys if k.startswith("ID:")}
             ctx.band = self.cluster_bands.get(u.cluster) if u.cluster else cluster_band(u.ev.ages)
             ctx.hide_location = u.cluster in getattr(self, "hidden_loc", set())
+        ctx.rare = getattr(self, "rare", None)
         return ctx
 
     def sanitize_csv(self, d: Doc) -> str:
