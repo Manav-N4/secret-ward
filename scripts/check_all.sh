@@ -28,6 +28,9 @@ grep -q " 0 failures" /tmp/_sw_traps || fail=1
 echo "== 5. our attacker (approximation of the official arena)"
 "$PY" scripts/attack.py --kit "$KIT" --output "$OUT"
 
+echo "== 5a. no-cue names (blind; classifier)"
+"$PY" scripts/nocue_eval.py
+
 echo "== 5b. utility estimate (temporal, generalization, token retention)"
 "$PY" scripts/score.py --kit "$KIT" --output "$OUT"
 

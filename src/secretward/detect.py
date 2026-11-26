@@ -97,6 +97,16 @@ def _replace_span(ctx: Ctx, kind: str, patient: bool = False) -> str:
     return "[NAME]"
 
 
+# ---------------------------------------------------------------------------- 0. trained classifier
+from .rules import POLICY as _POLICY                # noqa: E402
+from .ner import NameTagger                         # noqa: E402
+from .ner import medical as _ner_medical            # noqa: E402
+
+SURNAME_AFTER = re.compile(r"(?<=\[NAME\]) ([A-Z][a-z]{2,})(?=[ ,.;:!?)]|$)(?! [A-Z][a-z])")
+
+_TAGGER = NameTagger() if int(_POLICY.get("ner_enabled", 0)) else None
+
+
 # ---------------------------------------------------------------------------- 1. doctors
 DOC_RX = re.compile(rf"(?<![A-Za-z])(?:{ALT(sorted(DOCTOR_TITLES, key=len, reverse=True))})\s*(?:{SPAN})", re.I)
 
@@ -438,7 +448,21 @@ def clean_names(text: str, ctx: Ctx) -> str:
         ctx.counts["OTHER_NAME"] += 1
         return "[NAME]"
     text = NEAR_PHONE.sub(near_phone, text)
-    text = re.sub(r"\[NAME\](?:[\s_]+\[NAME\])+", "[NAME]", text)
+    if _TAGGER is not None:                       # trained classifier: names WITHOUT cues
+        spans = _TAGGER.spans(text, ctx.gaz.medical)
+        for a, b in reversed(spans):
+            text = text[:a] + "[NAME]" + text[b:]
+        ctx.counts["NAME_MODEL"] += len(spans)
+    if _TAGGER is not None:
+        # a capitalised surname right after a found name belongs to it: "[NAME] Prajapati ne"
+        def surname(m):
+            w = m.group(1)
+            if _ner_medical(w, ctx.gaz.medical) or w.isupper():
+                return m.group(0)
+            ctx.counts["NAME_MODEL"] += 1
+            return "[NAME]"
+        text = SURNAME_AFTER.sub(surname, text)
+    text = re.sub(r"\[NAME\](?:[\s_]*\[NAME\])+", "[NAME]", text)
     # name parts that are "generic" on their own (Singh, Bano, Devi) still help an attacker
     # when they sit next to a removed name: absorb them into the placeholder
     text = GEN_AFTER.sub("[NAME]", text)
