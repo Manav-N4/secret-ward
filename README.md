@@ -115,6 +115,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw. On data other than the default practice set pass `--input` and `--truth` (and `--registry`/`--facts`) |
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
 | `scripts/nocue_eval.py`, `scripts/train_ner.py` | blind no-cue name test; retrain the classifier |
+| `scripts/hinglish_eval.py` | 40 Hinglish nursing notes, names with no registration table |
 | `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
 
@@ -140,6 +141,11 @@ Privacy, measured with `scripts/attack.py` (our approximation of the official ar
 No-cue names (`scripts/nocue_eval.py`, blind: test templates, names and drug decoys never seen in
 training): rules only 0% of names removed; rules + classifier **88% removed, 100% of drug decoys kept,
 99.4% of other words kept**.
+
+Hinglish nursing notes (`scripts/hinglish_eval.py`, 40 notes written by a teammate, no registration
+table): **105 / 105 name parts removed, 40 / 40 notes fully clean, 19 / 19 clinical words kept**,
+both one note per file and all 40 as one multi-line note. This set found a real bug: a name that
+started the second line of a note was judged with the previous line as context (74% before the fix).
 
 Held-out (`scripts/heldout.py`): without registration tables 0 / 2263 PII leaked; free text only 0 / 569;
 every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00; phones, Aadhaar,

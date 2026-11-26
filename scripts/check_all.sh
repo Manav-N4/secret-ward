@@ -31,6 +31,9 @@ echo "== 5. our attacker (approximation of the official arena)"
 echo "== 5a. no-cue names (blind; classifier)"
 "$PY" scripts/nocue_eval.py
 
+echo "== 5c. Hinglish nursing notes (40, teammate-written, no registration)"
+"$PY" scripts/hinglish_eval.py
+
 echo "== 5b. utility estimate (temporal, generalization, token retention)"
 "$PY" scripts/score.py --kit "$KIT" --output "$OUT"
 

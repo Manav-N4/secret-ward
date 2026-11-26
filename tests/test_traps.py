@@ -26,6 +26,9 @@ CASES = [
     ("Mobile: +91 72864 90658", [], ["72864"]),
     ("ASHA worker visited", ["ASHA worker"], []),
     ("Platelets 150000-410000 /cumm", ["150000-410000"], []),
+    # a name starting the SECOND line of a note, after a line ending in "." (classifier)
+    ("Vitals stable, chart updated.\nSunil Das ko lunch ke baad vomiting hui, nurse ne chart update kiya.",
+     ["vomiting hui"], ["Sunil", "Das"]),
     ("Parkinson's disease, on levodopa", ["Parkinson's disease"], []),
     ("14:00 - Parvathi Pandeya - K/C/O urinary tract infection.", ["K/C/O urinary tract infection"], ["Parvathi", "Pandeya"]),
     ("[17/03/26, 9:32 pm] Raju Papa: <attachment: report.pdf>", [], ["Raju"]),
