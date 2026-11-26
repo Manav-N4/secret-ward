@@ -259,10 +259,15 @@ def clean_address(text: str, ctx: Ctx) -> str:
         return m.group(1) + out
     text = ADDR_LINE.sub(line, text)
     text, n = ADDR_PARTS.subn("[ADDRESS]", text); ctx.counts["ADDRESS"] += n
-    text, n = ctx.gaz.rx_place.subn("[ADDRESS]", text); ctx.counts["VILLAGE"] += n
-    for pin in sorted(ctx.gaz.pins):
-        text, n = re.subn(rf"(?<!\d){pin}(?!\d)", "[PIN]" if ctx.hide_location else pin_prefix(pin), text)
-        ctx.counts["PIN"] += n
+    text, n = ctx.gaz.m_place.subn("[ADDRESS]", text); ctx.counts["VILLAGE"] += n
+
+    def pin_sub(m):                          # one pass + set lookup (was one regex per known PIN)
+        if m.group(1) not in ctx.gaz.pins:
+            return m.group(0)
+        ctx.counts["PIN"] += 1
+        return "[PIN]" if ctx.hide_location else pin_prefix(m.group(1))
+    if ctx.gaz.pins:
+        text = re.sub(r"(?<!\d)(\d{6})(?!\d)", pin_sub, text)
     text = re.sub(r"(?i)(\bpin(?:\s*code)?\s*[:\-]?\s*)(\d{6})(?!\d)",
                   lambda m: m.group(1) + ("[PIN]" if ctx.hide_location else pin_prefix(m.group(2))), text)
     if ctx.hide_location:
@@ -347,8 +352,8 @@ def clean_names(text: str, ctx: Ctx) -> str:
         return _replace_span(ctx, "PATIENT_NAME") + m.group(2)
     text = HON_A_RX.sub(hon_after, text)
 
-    text, n = ctx.gaz.rx_latin.subn("[NAME]", text); ctx.counts["NAME_GAZ"] += n
-    text, n = ctx.gaz.rx_deva.subn("[NAME]", text); ctx.counts["NAME_GAZ"] += n
+    text, n = ctx.gaz.m_latin.subn("[NAME]", text); ctx.counts["NAME_GAZ"] += n
+    text, n = ctx.gaz.m_deva.subn("[NAME]", text); ctx.counts["NAME_GAZ"] += n
 
     def deva_pairs(m):  # cross-script: a Devanagari pair whose sound matches a known Latin name
         toks = m.group(0).split()
@@ -388,8 +393,8 @@ def sanitize_header(text: str, ctx: Ctx) -> str:
     t = normalize(text)
     t = clean_ids(t, ctx)
     t = clean_digits(t, ctx)
-    t, n = ctx.gaz.rx_latin.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
-    t, n = ctx.gaz.rx_deva.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
+    t, n = ctx.gaz.m_latin.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
+    t, n = ctx.gaz.m_deva.subn("[NAME]", t); ctx.counts["NAME_GAZ"] += n
     return t
 
 

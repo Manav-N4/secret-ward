@@ -113,7 +113,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | Canaries found | 4 / 4 | 0 / 4 |
 | Medical values kept | 4855 / 4855 | 4829 / 4855 (99.5%; 26 districts hidden on purpose for the smallest groups) |
 | Linking precision / recall | 0 / 0 | 1.00 / 0.99 (was 0.82: disease durations like "x 8 yrs" were misread as ages) |
-| Runtime | ~2 s | ~2 s |
+| Runtime | ~2 s | ~2 s (linear: 8,000 synthetic files with 40,000 distinct people in 18 s, 274 MB) |
 
 Privacy, measured with `scripts/attack.py` (our approximation of the official arena; lower is better):
 
