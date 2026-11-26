@@ -10,7 +10,7 @@ pip install -r requirements.txt
 RAKSHA_SECRET=<secret> python main.py --input <input dir> --output <empty output dir>
 ```
 
-No network access is used at run time. Standard library plus `indic-transliteration`.
+No network access is used at run time. Standard library only: no third-party packages (Devanagari transliteration is built in, `src/secretward/translit.py`).
 
 **Models declared:** none. No LLMs, no generative models, no pretrained transformers.
 Detection is rules + runtime gazetteers + a rule-based transliteration phonetic key.
@@ -46,6 +46,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `src/secretward/rules.py` + `config/rules/*.txt` | all labels, relations, honorifics, triggers, safe words, header hints as editable data |
 | `src/secretward/fields.py` | column/key semantics (hints + value shape) and per-type cleaning |
 | `src/secretward/gazetteer.py` | runtime name/place/ID gazetteer, cross-script skeleton key |
+| `src/secretward/translit.py` | built-in Devanagari to Latin transliteration (no dependency) |
 | `src/secretward/detect.py` | free-text sanitizer (layers listed above) |
 | `src/secretward/dates.py` | date finding/shifting in any format; DD/MM vs MM/DD voting per file and hospital ID prefix |
 | `src/secretward/link.py` | patient clustering with merge blockers |
