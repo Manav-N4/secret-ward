@@ -1,0 +1,26 @@
+# Markers after which a RELATIVE's name follows. Case-insensitive.
+s/o
+d/o
+w/o
+c/o
+
+son of
+daughter of
+wife of
+husband of
+care of
+guardian
+father
+mother
+husband
+wife
+पुत्र
+पुत्री
+पत्नी
+पति
+पिता
+माता
+पुत्र श्री
+पत्नी श्री
+सुपुत्र
+सुपुत्री
