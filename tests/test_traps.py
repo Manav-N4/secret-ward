@@ -42,6 +42,12 @@ CASES = [
     ("Presenting complaints: C/O fever for 8 days", ["Presenting complaints:", "C/O fever"], []),
     ("History: No K/C/O DM/HTN. c/o dysuria x 2 days", ["DM/HTN", "c/o dysuria"], []),
     ("Treated conservatively. patient stable.", ["Treated conservatively", "patient stable"], []),
+    # audit fixes: landlines, Md./Mohd prefix, initials
+    ("Ph: 0522-2345678, Tel (0522) 2345678, 05222345678", ["Ph:", "Tel"], ["2345678"]),
+    ("Platelets 1,50,000 /cumm, TLC 8,400, dose 0-1-0", ["1,50,000", "8,400", "0-1-0"], []),
+    ("Md. Arif ko 3 din se bukhar", ["ko 3 din se bukhar"], ["Arif"]),
+    ("Dr. Ramesh Srivastava (MD Medicine), Dr. Rao (MD Paediatrics)", ["MD Medicine", "MD Paediatrics"], []),
+    ("Name: R. K. Sharma, complains of fever", ["complains of fever"], ["R. K.", "Sharma"]),
     ("मकान नं. 32, जामा मस्जिद के पीछे, तहसील नवाबगंज", [], ["जामा मस्जिद के पीछे", "32"]),
 ]
 

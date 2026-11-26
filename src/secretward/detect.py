@@ -172,7 +172,8 @@ def clean_digits(text: str, ctx: Ctx) -> str:
             return s
         parts = re.findall(r"\d+", s)
         if re.fullmatch(r"\d{1,7}\s*-\s*\d{1,7}", s.strip()) and not (
-                [len(x) for x in parts] == [5, 5] and parts[0][0] in "6789"):
+                [len(x) for x in parts] == [5, 5] and parts[0][0] in "6789") and not (
+                parts[0].startswith("0") and len("".join(parts)) == 11):      # "0522-2345678" is a landline
             return s                       # a range such as 150000-410000, not an ID
         d = re.sub(r"\D", "", s)
         if len(d) == 12 and not (d.startswith("91") and d[2] in "6789" and ("+" in s or s.startswith("91 "))):
@@ -185,6 +186,9 @@ def clean_digits(text: str, ctx: Ctx) -> str:
         if len(core) == 10 and core[0] in "6789":
             ctx.counts["PHONE"] += 1
             return "[PHONE]"
+        if len(d) == 11 and d[0] == "0" and d[1] in "12345678" and not re.search(r"[.,]", s):
+            ctx.counts["PHONE"] += 1                 # landline: STD code + number, "0522-2345678"
+            return "[PHONE]"
         if (d.lstrip("0") or d) in ctx.gaz.id_cores:
             ctx.counts["ID"] += 1
             return "[ID]"
@@ -194,6 +198,9 @@ def clean_digits(text: str, ctx: Ctx) -> str:
     # bare digit runs that are known ID cores (e.g. "Anita_Sharma_010565")
     def core_sub(m):
         d = m.group(0)
+        if len(d) == 11 and d[0] == "0" and d[1] in "12345678":
+            ctx.counts["PHONE"] += 1
+            return "[PHONE]"
         if (d.lstrip("0") or d) in ctx.gaz.id_cores:
             ctx.counts["ID"] += 1
             return "[ID]"
@@ -301,6 +308,9 @@ GEN_BEFORE = re.compile(rf"(?<![A-Za-z])(?:(?i:{_GEN})\.?[\s_]+)+\[NAME\]")
 LOG_LINE = re.compile(rf"(?m)(^\s*\d{{1,2}}:\d{{2}}(?:\s*[AaPp][Mm])?\s*[-–]\s*)({LATIN_SPAN}|{DEVA_SPAN})(?=\s*[-–:,]\s)")
 # a name right before a clinical history marker: "Zenab Bano - K/C/O bell's palsy"
 BEFORE_CLINICAL = re.compile(rf"(?<![A-Za-z])({LATIN_SPAN})(?=\s*[-–:,]\s*(?i:k/c/o|c/o|h/o|known case)\b)")
+# "Md. Arif", "Mohd Irfan": a name prefix. Title-case only: all-caps "MD" is a doctor's degree.
+MD_PREFIX = re.compile(rf"(?<![A-Za-z])(?:Md\.?|Mohd\.?)\s+({L}(?: {L})?)")
+INITIALS = re.compile(r"(?<![A-Za-z])(?:[A-Z]\.\s?){1,3}(?=\[NAME\])")
 NEAR_PHONE = re.compile(r"(?<![A-Za-z])([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})(?=[^\n\[\]]{0,40}\[PHONE\])")
 L_LOW = r"[a-z][a-z'’]*"
 LOW_SPAN = rf"{L_LOW}(?: {L_LOW}){{0,2}}"
@@ -391,6 +401,13 @@ def clean_names(text: str, ctx: Ctx) -> str:
     text = TRIG_RX.sub(generic("OTHER_NAME"), text)
     text = HON_B_RX.sub(generic("PATIENT_NAME"), text)
 
+    def md_prefix(m):
+        span = _trim_span(m.group(1))
+        if not span or not _is_person(span):
+            return m.group(0)
+        return _replace_span(ctx, "PATIENT_NAME") + m.group(1)[len(span):]
+    text = MD_PREFIX.sub(md_prefix, text)
+
     def hon_after(m):
         span = m.group(1)
         if not _is_person(span):
@@ -426,6 +443,7 @@ def clean_names(text: str, ctx: Ctx) -> str:
     # when they sit next to a removed name: absorb them into the placeholder
     text = GEN_AFTER.sub("[NAME]", text)
     text = GEN_BEFORE.sub("[NAME]", text)
+    text = INITIALS.sub("", text)                  # "R. K. [NAME]" -> "[NAME]"
     return text
 
 
