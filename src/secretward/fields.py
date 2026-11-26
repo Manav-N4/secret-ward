@@ -13,7 +13,7 @@ from . import dates
 from .detect import Ctx, _is_person, sanitize
 from .gazetteer import DEVA
 from .privacy import age_band, pin_prefix
-from .rules import HEADER_HINTS
+from .rules import HEADER_HINTS, PLACE_ENDS, PLACE_WORDS
 
 NONPERSON_PATH = {"facility", "hospital", "organization", "organisation", "lab", "panel", "panels",
                   "test", "drug", "rx", "medication", "medicine", "package", "procedure", "department",
@@ -63,10 +63,20 @@ def value_type(values: list[str]) -> str | None:
     if share(lambda v: bool(PIN_V.match(v))) >= 0.8:
         return "PIN"
     uniq = len(set(vals)) / len(vals)
+    if len(vals) >= 3 and share(place_like) >= 0.6:
+        return "PLACE"
     if len(vals) >= 3 and uniq >= 0.6 and share(lambda v: _is_person(v) and not v.lower().startswith("dr")
                                                  and len(v.split()) >= 2) >= 0.7:
         return "NAME_LIKE"
     return None
+
+
+def place_like(v: str) -> bool:
+    toks = re.findall(r"[A-Za-z]+", v)
+    if not toks or len(toks) > 3 or not v[:1].isupper() or any(c.isdigit() for c in v):
+        return False
+    low = [t.lower() for t in toks]
+    return bool(set(low) & PLACE_WORDS) or (low[-1].endswith(PLACE_ENDS) and len(low[-1]) > 4)
 
 
 def classify(key: str, values: list, path: tuple = ()) -> str:
@@ -83,6 +93,8 @@ def classify(key: str, values: list, path: tuple = ()) -> str:
         return h
     if v == "PIN":
         return "PIN"
+    if v == "PLACE":
+        return "VILLAGE"
     if v == "NAME_LIKE" and not (path_toks & NONPERSON_PATH):
         return "NAME"
     return "TEXT"

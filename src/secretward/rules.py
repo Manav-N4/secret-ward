@@ -54,7 +54,15 @@ def months() -> dict[str, int]:
     return out
 
 
+def place_suffixes() -> tuple[tuple[str, ...], set[str]]:
+    ends, words = [], set()
+    for x in _lines("place_suffixes.txt"):
+        (words.add(x[1:].lower()) if x.startswith("=") else ends.append(x.lower()))
+    return tuple(sorted(ends, key=len, reverse=True)), words
+
+
 POLICY = load_policy()
+PLACE_ENDS, PLACE_WORDS = place_suffixes()
 LABELS_NAME = sorted(word_set("labels_name.txt"), key=len, reverse=True)
 RELATIONS = sorted(word_set("relations.txt"), key=len, reverse=True)
 TRIGGERS = sorted(word_set("triggers.txt"), key=len, reverse=True)

@@ -31,6 +31,9 @@ def peak_rss_mb() -> float:
         return 0.0
 
 
+MIN_PY = (3, 9)
+
+
 def run(inp: Path, out: Path) -> int:
     from secretward.pipeline import Pipeline
     t0 = time.monotonic()
@@ -68,6 +71,17 @@ def run(inp: Path, out: Path) -> int:
     }
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"files {len(files)} sanitized {n_san} quarantined {len(files) - n_san} records {len(records)}")
+
+    # Fail LOUDLY, never silently: a crash inside our own code quarantines a file (fail-safe),
+    # but if that happens to many files the release is broken and must not look successful.
+    errors = sum(1 for e in files if str(e.get("reason", "")).startswith("processing_error"))
+    if errors:
+        sys.stderr.write(f"warning: {errors} file(s) quarantined because of an internal error\n")
+    parseable = sum(1 for e in files if not str(e.get("reason", "")).startswith(
+        ("unsupported", "empty", "corrupt", "malformed", "nesting", "format_mismatch", "unreadable")))
+    if (files and n_san == 0) or (parseable and errors >= max(1, parseable // 2)):
+        sys.stderr.write("fatal: most files failed internally; refusing to report success\n")
+        return 3
     return 0
 
 
@@ -76,6 +90,9 @@ def main() -> int:
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", required=True)
     a = ap.parse_args()
+    if sys.version_info < MIN_PY:
+        sys.stderr.write("fatal: secret-ward needs Python %d.%d or newer\n" % MIN_PY)
+        return 2
     result = {"code": 1}
 
     def target():

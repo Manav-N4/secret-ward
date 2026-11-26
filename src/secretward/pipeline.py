@@ -209,6 +209,7 @@ class Pipeline:
             elif d.kind == "text":
                 self._harvest_text(d.data)
         self.gaz.compile()
+        self._reclassify_places()
         self._resolve_conventions()
 
     def _harvest_csv(self, d: Doc) -> None:
@@ -261,6 +262,29 @@ class Pipeline:
                     self.gaz.add_name(span)
         for m in ID_TOKEN.finditer(t):
             self.gaz.add_id(m.group(0))
+
+    def _reclassify_places(self) -> None:
+        """Pass 1b: a TEXT column whose values are mostly places learned from OTHER files is
+        a village column, whatever its header says ("Gram/Shehar", "Basti", ...)."""
+        known = {p.lower() for p in self.gaz.places}
+        if not known:
+            return
+
+        def mostly_places(vals) -> bool:
+            vals = [v.strip().lower() for v in vals if isinstance(v, str) and v.strip()]
+            return len(vals) >= 2 and sum(v in known for v in vals) / len(vals) >= 0.5
+        for d in self.docs:
+            if d.kind == "csv":
+                for j, t in enumerate(d.col_types):
+                    if t == "TEXT" and mostly_places([r[j] for r in d.data[1:] if j < len(r)]):
+                        d.col_types[j] = "VILLAGE"
+            elif d.kind == "json":
+                groups: dict = {}
+                for p, v in walk_leaves(d.data):
+                    groups.setdefault(schema_path(p), []).append(v)
+                for sp, vals in groups.items():
+                    if d.path_types.get(sp) == "TEXT" and mostly_places(vals):
+                        d.path_types[sp] = "VILLAGE"
 
     def _resolve_conventions(self) -> None:
         votes: dict[str, Counter] = {}
@@ -529,7 +553,10 @@ class Pipeline:
                 d.out_rel = self.out_name(d)
                 dest = san / d.out_rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(result, encoding="utf-8", newline="")
+                # open(..., newline="") works on every Python 3; Path.write_text(newline=)
+                # is 3.10+ only and silently broke every file on 3.9
+                with open(dest, "w", encoding="utf-8", newline="") as fh:
+                    fh.write(result)
                 entry.update(output=f"sanitized/{d.out_rel}", status="sanitized")
             except Exception as exc:  # noqa: BLE001 - fail safe, reason never holds content
                 d.kind = "quarantine"

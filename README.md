@@ -5,10 +5,16 @@ hospital records. Built for Yugaantar DevForge, Track 3 "Secret Wards".
 
 ## Setup and run
 
+**Requires Python 3.9 or newer** (tested on 3.9, 3.11, 3.12 and 3.13 with identical results).
+Use `python3`: many machines have no bare `python`.
+
 ```bash
-pip install -r requirements.txt
-RAKSHA_SECRET=<secret> python main.py --input <input dir> --output <empty output dir>
+python3 -m pip install -r requirements.txt     # installs nothing: standard library only
+RAKSHA_SECRET=<secret> python3 main.py --input <input dir> --output <empty output dir>
 ```
+
+**Fails loudly, never silently:** exit code 2 if Python is older than 3.9; exit code 3 if
+most files fail inside our own code (instead of quarantining everything and reporting success).
 
 No network access is used at run time. Standard library only: no third-party packages (Devanagari transliteration is built in, `src/secretward/translit.py`).
 
@@ -71,6 +77,8 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 * The secret is read from the environment only and never printed or stored.
 * stdout prints counts only; a custom exception hook prints only the exception type (Python error
   messages can contain record values); quarantine reasons are fixed codes.
+* Village/locality columns are recognised by their **values** (place-name morphology such as
+  -pur, -ganj, Kalan, Khurd, plus places learned from other files), not only by header name.
 * Files we cannot parse safely (corrupt, truncated, too deeply nested, wrong format, binary, PDF, images, XML)
   are quarantined, never copied.
 

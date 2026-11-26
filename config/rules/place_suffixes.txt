@@ -1,0 +1,32 @@
+# Endings and words typical of North-Indian place names (village-name morphology).
+# Used on column VALUES, so a village column is found even under an unseen header.
+# A value counts as place-like if its last word ends with one of these, or it contains a marker word.
+pur
+puri
+pura
+purwa
+ganj
+garh
+nagar
+abad
+dih
+khera
+kheda
+mau
+gaon
+gram
+kot
+ner
+pali
+patti
+bagh
+bazar
+bazaar
+tola
+para
+majra
+# marker words (whole word)
+=kalan
+=khurd
+=buzurg
+=bujurg
