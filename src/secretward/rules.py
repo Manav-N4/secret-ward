@@ -70,6 +70,8 @@ def icd_chapters() -> list[tuple[str, str, str]]:
 
 
 POLICY = load_policy()
+MEDICAL_STEMS = tuple(sorted(word_set("medical_stems.txt"), key=len, reverse=True))
+MEDICAL_WORDS = word_set("medical_words.txt")
 ICD_CHAPTERS = icd_chapters()
 PLACE_ENDS, PLACE_WORDS = place_suffixes()
 LABELS_NAME = sorted(word_set("labels_name.txt"), key=len, reverse=True)

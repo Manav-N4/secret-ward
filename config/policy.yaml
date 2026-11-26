@@ -11,3 +11,5 @@ rare_condition_max_patients: 0  # 0 = off. If N > 0, a diagnosis/procedure seen 
                            # cost 1.7-3.3% of medical values and left the targeted attack (A5) at 0.48-0.49,
                            # because A5 succeeds through COMMON conditions + profile consistency and the exact
                            # length of stay (which must stay exact). So it ships off; see README.
+ner_enabled: 1              # our own trained name classifier (src/secretward/ner.py) for names
+                           # without cues; 0 = rules only. Measured: see README.

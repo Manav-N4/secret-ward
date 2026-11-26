@@ -65,8 +65,10 @@ HOW = [
      "the scorer (NFKC, homoglyphs, zero-width, Devanagari digits, base64). Names come from labels "
      "(Name:, Naam:, and the Devanagari label), relation markers, context triggers (\"called by\", \"witnessed by\"), honorifics and "
      "Hinglish kinship words (ji, sahab, Papa, Chachu), nursing log lines, phone proximity, the gazetteer and "
-     "a cross-script phonetic key (Devanagari to Latin, built in). Doctors, ASHA, doses (1-0-1, 650 mg), "
-     "eponyms, wards and C/O-complaint vs C/O-relative are protected."),
+     "a cross-script phonetic key (Devanagari to Latin, built in). Last, <b>our own trained classifier</b> (averaged "
+     "perceptron, ~600 weights) catches names with no cue; it sees only word shape, endings and neighbours, never "
+     "the word itself, so it cannot memorise names, and drug stems / medical suffixes veto it. Doctors, ASHA, "
+     "doses (1-0-1, 650 mg), eponyms, wards and C/O-complaint vs C/O-relative are protected."),
     ("Linking", "Union-find over strong keys (hospital IDs, phone, Aadhaar, ABHA) with merge blockers: "
      "different gender, stated ages more than 3 years apart, or names with no shared sound-alike token never "
      "merge. Records listing many patients (indexes) never bridge two people. Name-only records join only if "
@@ -96,7 +98,9 @@ RESULTS = [
     ("Patients pinned to ONE registry person", "45 / 48 on raw input → 1 / 48 on our output"),
     ("Our attacker, ours vs raw (lower is better)", "A3 record linkage 0.67 → 0.031; A4 profile re-ID 93.8% → 6.2% "
      "(kit reference 16.7%); A5 targeted 100% → 51.2%"),
-    ("Data we did not tune on", "no registration tables: 3 / 2263 leaked, recall 0.99; free text only: 0 / 569; "
+    ("Names with no cue (blind test)", "rules only 0% removed; rules + our classifier 88% removed, drug decoys "
+     "100% kept, other words 99.4% kept"),
+    ("Data we did not tune on", "no registration tables: 0 / 2263 leaked, recall 0.99; free text only: 0 / 569; "
      "headers renamed to unseen wording: 0 / 3230; new phone, ID, DOB, label formats: 0 / 3230, linking 1.00 / 1.00"),
     ("Run time / peak memory", "2.0 s / 27 MB for 200 files; linear scaling: 8,000 synthetic files with new people in "
      "every file in 18 s / 274 MB (limits 15 min / 4 GB); identical on Python 3.9-3.13; byte-identical repeats; offline"),
@@ -131,9 +135,8 @@ LIMITS = [
     "exact length of stay and profile consistency on moderately common conditions (TB, typhoid, diabetes: 6-9 "
     "patients each). Stay length must stay exact for clinical integrity, so this is an accepted trade-off; larger "
     "releases dilute it.",
-    "Names in free text with no label, relation, trigger, honorific, log structure or gazetteer match can still "
-    "slip (3 / 2263 when registration tables are removed). A small CRF trained on our own synthetic data is the "
-    "next step.",
+    "Names with no cue at all are caught 88% of the time on our blind test (sentence-initial words such as "
+    "\"Met\" are sometimes taken for names); Devanagari names without cues rely on the gazetteer only.",
     "The phonetic key is coarse; rare transliterations may not link on unseen data (practice recall 1.00).",
     "XML, PDF and images are quarantined, not cleaned. Our attacker approximates the official arena from its "
     "published spec; the official numbers will differ.",

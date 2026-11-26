@@ -100,8 +100,11 @@ def classify(key: str, values: list, path: tuple = ()) -> str:
     path_toks = set()
     for p in path:
         path_toks.update(key_tokens(str(p))[0])
-    if h == "NAME" and path_toks & NONPERSON_PATH:
-        h = None
+    own = set(key_tokens(key)[0])
+    explicit_person = bool(own & {"patient", "patients", "naam", "rogi", "mareez", "member", "beneficiary"}) or \
+        key_tokens(key)[1] in ("patientname", "fullname", "firstname", "lastname")
+    if h == "NAME" and path_toks & NONPERSON_PATH and not explicit_person:
+        h = None                                  # "panels[].name" is a test name, but "results[].patient_name" is a person
     if h == "PATIENTID" and v in ("DATES", "DOB_DATES"):
         h = None                                  # "Registration Date" is a date, not an ID
     if v in ("PHONE", "AADHAAR", "ABHA", "EMAIL") and h not in ("PATIENTID", "OTHERID"):

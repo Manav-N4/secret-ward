@@ -18,8 +18,18 @@ most files fail inside our own code (instead of quarantining everything and repo
 
 No network access is used at run time. Standard library only: no third-party packages (Devanagari transliteration is built in, `src/secretward/translit.py`).
 
-**Models declared:** none. No LLMs, no generative models, no pretrained transformers.
-Detection is rules + runtime gazetteers + a rule-based transliteration phonetic key.
+**Models declared:** one small classical-ML model **we trained ourselves**: an averaged-perceptron
+name classifier (`src/secretward/ner.py`, about 600 weights in `src/secretward/ner_weights.json`,
+retrain with `python3 scripts/train_ner.py --kit <toolkit>`). Trained on synthetic sentences we
+generated (`scripts/nocue_data.py`, train split) plus the practice free text labelled by its answer key.
+It never sees the identity of the word it judges (only shape, endings and neighbouring words), so it
+cannot memorise names. No LLMs, no generative models, no pretrained models of any size.
+Switch it off with `ner_enabled: 0` in `config/policy.yaml`.
+
+**How the detectors combine:** column rules and the runtime gazetteer handle structured data; context
+rules (labels, relations, honorifics, triggers, log lines) handle names with cues; the classifier runs
+last, only on sentences of 6+ words, only on standalone Title-case words, and never on drug stems,
+medical suffixes, clinical or calendar words (`config/rules/medical_stems.txt`, `medical_words.txt`).
 
 ## Architecture
 
@@ -104,6 +114,7 @@ input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anythi
 | `bash scripts/check_all.sh [kit] [--full]` | the whole routine: pipeline, contract, self-check, traps, attacker, (held-out), submission check |
 | `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw. On data other than the default practice set pass `--input` and `--truth` (and `--registry`/`--facts`) |
 | `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
+| `scripts/nocue_eval.py`, `scripts/train_ner.py` | blind no-cue name test; retrain the classifier |
 | `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
 | `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
 
@@ -126,7 +137,11 @@ Privacy, measured with `scripts/attack.py` (our approximation of the official ar
 | A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
 | A5 targeted attack success | 100% | 51.4% | 51.2% (complete patient clusters give the attacker fuller profiles) |
 
-Held-out (`scripts/heldout.py`): without registration tables 3 / 2263 PII leaked; free text only 0 / 569;
+No-cue names (`scripts/nocue_eval.py`, blind: test templates, names and drug decoys never seen in
+training): rules only 0% of names removed; rules + classifier **88% removed, 100% of drug decoys kept,
+99.4% of other words kept**.
+
+Held-out (`scripts/heldout.py`): without registration tables 0 / 2263 PII leaked; free text only 0 / 569;
 every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00; phones, Aadhaar,
 IDs, DOBs, labels and relation markers rewritten into new formats 0 / 3230, linking 1.00 / 1.00.
 
