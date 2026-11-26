@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import dates
-from .detect import ID_TOKEN, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
+from .detect import AGE_PATTERNS, ID_TOKEN, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
 from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
 from .link import Evidence, Linker, name_key, norm_gender, norm_id
@@ -32,7 +32,6 @@ UUIDISH = re.compile(r"^(?:urn:uuid:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 PHONE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])(?:\+?91[\s-]?)?0?[6-9]\d{4}[\s-]?\d{5}(?![0-9])")
 AADHAAR_IN_TEXT = re.compile(r"(?<![0-9])\d{4}[\s-]?\d{4}[\s-]?\d{4}(?![0-9])")
 ABHA_IN_TEXT = re.compile(r"(?<![0-9])\d{2}-\d{4}-\d{4}-\d{4}(?![0-9])")
-AGE_IN_TEXT = re.compile(r"(?i)(?:age(?:/sex)?\s*[:\-]?\s*|आयु\s*[:\-]?\s*)(\d{1,3})|(\d{1,3})\s*(?:yrs?|years?|y|वर्ष)\b")
 GENDER_IN_TEXT = re.compile(r"(?i)(?:/\s*|sex\s*[:\-]\s*)(M|F|male|female)\b")
 
 
@@ -581,11 +580,15 @@ class Pipeline:
                 g = norm_gender(m.group(1))
                 if g:
                     ev.genders.add(g)
-            m = AGE_IN_TEXT.search(t)
-            if m:
-                a = int(m.group(1) or m.group(2))
-                if a <= 120:
-                    ev.ages.append(a)
+            # strict age forms only ("Age: 52", "46 Yrs/M", "52 वर्ष"); "x 8 yrs" is a disease
+            # duration, and reading it as an age blocked correct links and widened bands
+            for rx in AGE_PATTERNS:
+                m = rx.search(t)
+                if m:
+                    a = int(m.group(2))
+                    if a <= 120 and t[max(0, m.start(2) - 1):m.start(2)] not in ("-", "+"):
+                        ev.ages.append(a)
+                    break
 
     # pass 2 --------------------------------------------------------------
     def ctx_for(self, d: Doc, u: Unit | None) -> Ctx:
