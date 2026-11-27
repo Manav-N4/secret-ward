@@ -53,100 +53,90 @@ S_KPI_L = ParagraphStyle("kpil", parent=S_BODY, fontSize=10, leading=11.6, textC
 S_BUL = ParagraphStyle("bul", parent=S_SMALL, leftIndent=10, bulletIndent=0, spaceAfter=2)
 
 # ----------------------------------------------------------------------------- TEXT
+# Structure and labels follow the kit's brief/PROJECT_BRIEF_TEMPLATE.md exactly.
 TEAM = "secret-ward"
-PITCH = ("An offline privacy firewall that finds people no dictionary knows, in English, Hindi and Hinglish, "
-         "and proves its privacy by attacking itself.")
-META = "Track 3 · Secret Wards &nbsp;&nbsp;|&nbsp;&nbsp; Manav · Aditya · Nishk · Kavita &nbsp;&nbsp;|&nbsp;&nbsp; github.com/Manav-N4/secret-ward"
-
-KPIS = [
-    ("0 / 3230", "personal data<br/>pieces leaked"),
-    ("99.4%", "medical values<br/>kept exact"),
-    ("1.00 / 1.00", "linking precision<br/>and recall"),
-    ("0 / 48", "patients unique on<br/>what we release"),
-    ("98% → 6%", "patients re-identified<br/>by attack"),
-]
+PITCH = ("an offline privacy firewall that finds people no dictionary knows, in English, Hindi and Hinglish, "
+         "and proves its privacy by attacking itself")
+META = ("<b>Track 3 · Secret Wards</b> &nbsp;·&nbsp; <b>Members:</b> Manav, Aditya, Nishk, Kavita "
+        "&nbsp;·&nbsp; <b>Repo:</b> github.com/Manav-N4/secret-ward")
 
 ONE_PARA = (
     "secret-ward turns a messy multi-hospital dump (CSV, TSV, JSON, FHIR, notes, in three scripts) into a research "
     "release: every identifier removed, every clinical value exact, one keyed pseudonym per patient across files and "
-    "hospitals. <b>The key idea: nothing is memorised.</b> Column meanings come from the values, names and IDs are "
-    "learned from each input at run time, and a small model we trained ourselves catches names with no cue at all, so "
-    "unseen headers, new patients and planted canaries are still caught. Offline, CPU-only, no LLM.")
+    "hospitals. <b>The single idea that makes it better than a plain PII tool: nothing is memorised.</b> Column "
+    "meanings come from the values, names and IDs are learned from each input at run time, and a small model we "
+    "trained ourselves catches names with no cue at all, so unseen headers, new patients and planted canaries are "
+    "still caught. Offline, CPU-only, no LLM, and it re-checks its own output before release.")
 
 HOW = [
-    ("Ingestion", "UTF-8, UTF-8 BOM, UTF-16, cp1252; CSV, TSV, JSON, FHIR R4, text; unknown extensions sniffed "
-     "by content. Corrupt, empty, PDF, image and XML files are quarantined (encrypted), never copied. A memory and "
-     "time governor plus crash isolation mean the report is always written."),
-    ("Detection<br/>(3 scripts)", "Columns typed by header <i>and</i> value shape. Text normalised like the scorer "
-     "(NFKC, homoglyphs, zero-width, base64). Names from labels (Name:, Naam:, <font name='Deva'>नाम</font>:), relation "
-     "markers (S/o, W/o), honorifics and Hinglish kin words, a learned gazetteer, a cross-script phonetic key "
-     "(<font name='Deva'>रमेश</font> = Ramesh, Mohammad = Mohd), then <b>our trained classifier</b>. Doctors, "
-     "doses and “C/O fever” vs “C/O Ramesh” are protected."),
-    ("Linking &amp;<br/>pseudonyms", "Union-find on strong keys (hospital ID, phone, Aadhaar, ABHA); merge blockers: "
-     "different gender, ages over 3 years apart or no sound-alike name never merge; a blocking index for name-only "
-     "records. Pseudonym = PSN- + HMAC-SHA256(secret, patient), written inside every record."),
-    ("Privacy layer", "Per-patient secret date shift (non-zero, ±180 days) keeps every interval exact. One truthful "
-     "10-year age band per patient. DOB, house and village removed; district and 3-digit PIN kept. Local "
-     "k-anonymity (k = 3): small groups get a 20-year band; anyone still alone also loses district."),
-    ("Release gate", "Before writing, each file and path is re-checked against every identifier learned from the "
-     "input: 0 repairs on practice data; with all name rules off it alone cuts leaks by 35%."),
+    ("Ingestion", "UTF-8, UTF-8 BOM, UTF-16 (with or without BOM), cp1252; CSV, TSV, JSON, FHIR R4, text; unknown "
+     "extensions sniffed by content. Empty, corrupt, truncated, too-deep, mislabelled, PDF, image and XML files are "
+     "<b>quarantined</b> with a fixed reason code, kept only encrypted, never copied. A memory and time governor and "
+     "crash isolation mean the report is always written."),
+    ("Detection", "<b>Rules:</b> columns typed by header <i>and</i> value shape (Aadhaar, ABHA, phone, ID pattern, "
+     "place endings -pur/-ganj); text normalised like the scorer (NFKC, homoglyphs, zero-width, base64). "
+     "<b>English, Hindi, Hinglish:</b> labels (Name:, Naam:, <font name='Deva'>नाम</font>:), relation markers "
+     "(S/o, W/o), honorifics and kin words (ji, sahab, Chachu). <b>Gazetteer</b> learned per input; "
+     "<b>transliteration</b> to a cross-script phonetic key (<font name='Deva'>रमेश</font> = Ramesh); "
+     "<b>classical ML:</b> our own averaged perceptron for names with no cue. <b>Meaning traps:</b> doctors, doses "
+     "(1-0-1), eponyms and “C/O fever” vs “C/O Ramesh” are protected."),
+    ("Linkage &amp;<br/>pseudonyms", "Union-find on strong keys (hospital ID, phone, Aadhaar, ABHA). <b>Blocking:</b> "
+     "name-only records are compared only with clusters sharing their name tokens. Phonetic, cross-script name keys "
+     "(Mohammad = Mohd). <b>No over-merging:</b> different gender, ages over 3 years apart or no sound-alike name "
+     "never merge; records listing many patients never bridge two. <b>Keyed HMAC IDs:</b> PSN- + "
+     "HMAC-SHA256(secret, patient), written inside every record."),
+    ("Privacy layer", "<b>Date shifting:</b> one secret, non-zero shift per patient (±180 days), so intervals and "
+     "stay lengths stay exact. <b>Age bands:</b> one truthful 10-year band per patient. <b>Location:</b> house and "
+     "village removed; district and 3-digit PIN kept. <b>Rare-value suppression:</b> local k-anonymity (k = 3): "
+     "small groups get a 20-year band, anyone still alone loses district and PIN."),
+    ("Security", "<b>Encryption at rest:</b> quarantined files kept only as AES-256-GCM ciphertext, named by hash; "
+     "everything else is processed in memory. <b>Keys:</b> RAKSHA_SECRET only in the environment, never written; "
+     "per-file keys via HKDF. <b>PII-free logs:</b> counts and fixed codes only (QA side-channel scan: 0 hits). "
+     "<b>Release gate:</b> every output file and path is re-checked against all identifiers learned from the input."),
 ]
 
 USP = [
     ("Works on data it has never seen",
-     "Content-typed columns and run-time learning. Renamed headers, new formats and 8 random mutations of the "
-     "practice set (answer key rewritten too): 0 leaks on every one."),
-    ("Our own model for names with no cue",
-     "A ~600-weight averaged perceptron that never sees the word itself, so it cannot memorise. Blind test: "
-     "0% → 88% of cue-less names removed, 100% of drug names kept."),
+     "Nothing memorised; our classifier never sees the word. Renamed headers, new formats, 8 mutations: 0 leaks. "
+     "Cue-less names: 0% → 88%."),
     ("Privacy proven by attack",
-     "Our A3–A5 attacker and a second one built independently by QA agree: re-identification 98% → 6–8%. Each "
-     "privacy setting was kept only if the attack justified its cost."),
-    ("Built for failure, audited before release",
-     "Resource governor, crash isolation, encrypted quarantine, release gate and a counts-only report card in "
-     "logs/. Torture test (empty, 60 MB bulk, PII folder names, symlinks): exit 0, 0 leaks."),
+     "Two independently built attackers agree: re-identification 98% → 6–8%. Each setting kept only if the "
+     "attack justified its cost."),
+    ("Built for failure, self-audited",
+     "Resource governor, crash isolation, encrypted quarantine, a release gate. Torture test (60 MB bulk, PII "
+     "folders, symlinks): 0 leaks."),
 ]
 
 RESULTS = [
-    ("Personal data leaked<br/>(overall / Hindi / Hinglish)",
-     "<b>0 / 3230</b> (0% / 0% / 0%); canaries 0 / 4; 0% in file names, keys, headers, metadata, base64"),
-    ("Medical values kept", "<b>4826 / 4855 (99.4%)</b>: all 29 lost are district names hidden on purpose; "
+    ("personal data leaked<br/>(overall / Hindi / Hinglish)",
+     "<b>0% / 0% / 0%</b>: 0 of 3,230 pieces; canaries 0 / 4; 0% in file names, keys, headers, metadata, base64"),
+    ("medical values kept", "<b>99.4%</b> (4,826 / 4,855): all 29 lost are district names hidden on purpose; "
      "15,286 / 15,286 date intervals exact"),
-    ("Linking P / R / F0.5", "<b>1.00 / 1.00 / 1.00</b>; 0 wrong merges; both same-name homonym pairs kept apart"),
-    ("Re-identification risk<br/>(our estimate)", "patients unique on (gender, age band, district) against the "
-     "attacker's 240-person register: <b>0 / 48</b> (raw 46 / 48; kit reference setting 20 / 48), median 21 matches. "
-     "Dates are shifted per patient, so a known admission week does not narrow it"),
-    ("Attacks, raw → ours", "A3 record linkage 0.67 → 0.03 · A4 re-identified 93.8% → 6.2% · A5 targeted 100% → 51% "
-     "(QA's attacker: 8.3% and 47.6%)"),
-    ("Run time / peak memory", "2.0 s / 36 MB for 200 files; 24 s / 267 MB for 8,000 files (limits 15 min / 4 GB); "
-     "byte-identical repeats on Python 3.9–3.13"),
-    ("On data we did not tune on", "no registration tables 0 / 2263 leaked; free text only 0 / 569; renamed headers "
-     "and new formats 0 / 3230; 8 mutation seeds 0 each; 40 Hinglish notes 105 / 105 name parts removed"),
+    ("linking precision / recall / F0.5", "<b>1.00 / 1.00 / 1.00</b>; 0 wrong merges; both homonym pairs kept apart"),
+    ("re-identification risk<br/>(our estimate)", "<b>0%</b> of patients unique on gender + age band + district "
+     "against the attacker's 240-person register (0 / 48; raw data 96%, kit reference setting 42%). Admission week "
+     "adds nothing: dates are shifted per patient. Attacks, raw → ours: A4 93.8% → 6.2%, A5 100% → 51%"),
+    ("run time / peak memory", "<b>2.0 s / 36 MB</b> for 200 files; 24 s / 267 MB for 8,000 files "
+     "(limits 15 min / 4 GB); byte-identical repeats"),
+    ("on data you did not tune on", "no registration tables 0 / 2,263 leaked; free text only 0 / 569; renamed "
+     "headers and new formats 0 / 3,230; 8 mutation seeds 0 each; 40 Hinglish notes 105 / 105 name parts; "
+     "torture test 0"),
 ]
 
 LADDER = [
-    ("Setting (each step kept only if the attack justified it)", "Unique", "A4", "A5", "Medical", "Utility*"),
+    ("How each setting was chosen", "Unique", "A4", "A5", "Medical", "Utility*"),
     ("10-year age bands only", "27%", "27%", "57%", "100%", "0.65"),
     ("+ 20-year band for groups smaller than 3", "15%", "12.5%", "57%", "100%", "0.62"),
-    ("<b>+ hide district and PIN if still alone (shipped)</b>", "<b>0%</b>", "<b>6.2%</b>", "<b>51%</b>", "<b>99.4%</b>", "<b>0.41</b>"),
+    ("<b>+ hide district and PIN if still alone (shipped)</b>", "<b>0%</b>", "<b>6.2%</b>", "<b>51%</b>",
+     "<b>99.4%</b>", "<b>0.41</b>"),
 ]
 
 TRADEOFF = (
-    "<b>What we give up:</b> in a 48-patient release most patients get a 20-year band and 29 lose their district "
-    "(*generalisation utility 0.65 → 0.41); bigger releases have bigger groups, so fewer are coarsened. Medicines, "
-    "doses, labs and stay lengths are never touched. <b>Tried and switched off:</b> generalising rare diagnoses to "
-    "ICD chapters cost 2–6% of medical values and did not lower A5.")
-
-SECURITY = [
-    ("Encrypted quarantine", "Files we cannot clean are kept only as AES-256-GCM ciphertext, named by hash. "
-     "Per-file keys via HKDF from RAKSHA_SECRET: one leaked key opens one file. No plaintext fallback."),
-    ("Keys away from data", "RAKSHA_SECRET lives only in the environment, never printed or written. Pseudonyms "
-     "and date shifts are keyed HMACs: irreversible without it."),
-    ("Nothing plaintext at rest", "Parsing, linking and cleaning happen in memory; the only bytes we write are "
-     "the release, the report and ciphertext."),
-    ("PII-free logs", "stdout prints counts only; the exception hook prints the error type only; reasons are "
-     "fixed codes. QA's side-channel scan of stdout, stderr, TMPDIR, HOME and the report: 0 hits."),
-]
+    "<b>Why these settings.</b> Each step was kept only if the attack numbers justified its cost. <b>What we give "
+    "up:</b> in a 48-patient release most patients get a 20-year band and 29 lose their district (*generalisation "
+    "utility 0.65 → 0.41); bigger releases have bigger groups, so fewer are coarsened. Medicines, doses, labs and stay "
+    "lengths are never touched. <b>What we gain:</b> no patient is unique on what we release. <b>Tried and switched "
+    "off:</b> generalising rare diagnoses to ICD chapters cost 2–6% of medical values and did not lower A5.")
 
 LIMITS = [
     "<b>Targeted attack (A5) about 51%.</b> Driven by the exact length of stay plus a consistent profile on common "
@@ -154,19 +144,15 @@ LIMITS = [
     "releases dilute it.",
     "<b>Small releases are coarsened heavily</b> (above). <b>Names with no cue: 88%, not 100%</b>: sentence-initial "
     "words such as “Met” are sometimes taken for names.",
-    "XML, PDF and images, and any single file above ~43 MB (memory governor), are quarantined rather than cleaned; "
-    "streaming large files is our next step. Our attackers follow the published spec; official numbers will differ.",
+    "XML, PDF and images, and any single file above ~43 MB (memory governor), are quarantined rather than cleaned. "
+    "<b>Next:</b> stream large files instead of quarantining them, and clean text inside PDFs.",
+    "Our attackers follow the published attack spec; the official arena's numbers will differ.",
 ]
-
-TESTING = (
-    "<b>How we tested:</b> 46 trap cases, five held-out variants, 40 Hinglish notes, a mutation harness, a torture "
-    "test, crash injection, two attackers, the kit validators, and independent QA (Aditya), whose finds included a "
-    "Python 3.9 bug quarantining every file, a linker crash on 1,000+ people and two slow regexes. All fixed.")
-
 
 # ----------------------------------------------------------------------------- pieces
 def header():
-    t = Table([[Paragraph(TEAM, S_TITLE)], [Paragraph(PITCH, S_PITCH)], [Paragraph(META, S_META)]],
+    t = Table([[Paragraph(TEAM, S_TITLE)], [Paragraph(PITCH[0].upper() + PITCH[1:], S_PITCH)],
+               [Paragraph(META, S_META)]],
               colWidths=[W + 32 * mm - 2])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), GREEN),
@@ -201,36 +187,36 @@ def arrow(d, x1, y, x2):
 
 
 def diagram():
-    d = Drawing(W, 86)
-    stages = [("Input", ["CSV · TSV · JSON", "FHIR · notes", "EN · HI · Hinglish"], False),
-              ("1  Ingest", ["4 encodings", "normalise", "sniff content"], True),
-              ("2  Learn", ["type columns", "by values; learn", "names and IDs"], True),
-              ("3  Link", ["strong keys", "merge blockers", "HMAC IDs"], True),
-              ("4  Detect", ["rules · gazetteer", "cross-script", "own classifier"], True),
-              ("5  Privacy", ["per-patient shift", "one age band", "local k-anon"], True),
-              ("Output", ["sanitized/", "records.jsonl", "report.json"], False)]
-    n, gap = len(stages), 7
+    d = Drawing(W, 96)
+    stages = [("Input files", ["CSV · TSV · JSON", "FHIR · text notes", "EN · HI · Hinglish"], False),
+              ("Ingestion", ["4 encodings", "normalise text", "sniff content"], True),
+              ("Detection", ["type columns,", "learn names / IDs", "(pass 1)"], True),
+              ("Linking", ["strong keys", "merge blockers", "keyed HMAC IDs"], True),
+              ("Privacy layer", ["clean text (pass 2)", "shift dates, bands", "local k-anon"], True),
+              ("Outputs", ["sanitized/", "report.json", "records.jsonl"], False)]
+    n, gap = len(stages), 9
     bw = (W - gap * (n - 1)) / n
-    top, bh = 82, 52
+    top, bh = 92, 54
     for i, (t, lines, inner) in enumerate(stages):
         x = i * (bw + gap)
         d.add(Rect(x, top - bh, bw, bh, rx=4, ry=4, fillColor=TINT if inner else WHITE,
                    strokeColor=GREEN, strokeWidth=0.9))
-        d.add(String(x + bw / 2, top - 14, t, fontName="Body-Bold", fontSize=10, fillColor=GREEN_D, textAnchor="middle"))
+        d.add(String(x + bw / 2, top - 14, t, fontName="Body-Bold", fontSize=10.5, fillColor=GREEN_D,
+                     textAnchor="middle"))
         for k, ln in enumerate(lines):
-            d.add(String(x + bw / 2, top - 27 - k * 10, ln, fontName="Body", fontSize=9, fillColor=INK, textAnchor="middle"))
+            d.add(String(x + bw / 2, top - 27 - k * 10, ln, fontName="Body", fontSize=9.5, fillColor=INK,
+                         textAnchor="middle"))
         if i < n - 1:
             arrow(d, x + bw, top - bh / 2, x + bw + gap)
-    # quarantine branch and the release gate
     x_ing = bw + gap + bw / 2
     x_out = (n - 1) * (bw + gap)
     d.add(Line(x_ing, top - bh, x_ing, 14, strokeColor=MUTED, strokeWidth=1.1))
     arrow(d, x_ing, 14, x_out)
-    d.add(String((x_ing + x_out) / 2, 18, "cannot clean safely → quarantine, AES-256-GCM, never copied",
-                 fontName="Body", fontSize=9, fillColor=MUTED, textAnchor="middle"))
+    d.add(String((x_ing + x_out) / 2, 18, "files we cannot clean safely → quarantine (AES-256-GCM), never copied",
+                 fontName="Body", fontSize=9.5, fillColor=MUTED, textAnchor="middle"))
     d.add(Rect(x_out, 2, bw, 24, rx=4, ry=4, fillColor=colors.HexColor("#FFF7E6"),
                strokeColor=colors.HexColor("#B7791F"), strokeWidth=0.9))
-    d.add(String(x_out + bw / 2, 11, "quarantine/", fontName="Body-Bold", fontSize=9.5,
+    d.add(String(x_out + bw / 2, 11, "quarantine/", fontName="Body-Bold", fontSize=10,
                  fillColor=colors.HexColor("#975A16"), textAnchor="middle"))
     return d
 
@@ -295,18 +281,15 @@ def build(out: Path) -> None:
                                                             ("TOPPADDING", (0, 0), (-1, -1), 0),
                                                             ("BOTTOMPADDING", (0, 0), (-1, -1), 0)],
                hAlign="CENTER"),
-         Spacer(1, 5), kpis(),
          h("1", "In one paragraph"), Paragraph(ONE_PARA, S_BODY),
          h("2", "Architecture"), diagram(),
-         h("3", "How each part works"), two_col(HOW, 27 * mm),
-         h("4", "USP: what a plain PII tool does not do"), cards(USP),
+         h("3", "How it works"), two_col(HOW, 25 * mm),
+         h("4", "USP"), cards(USP, cols=3),
          PageBreak(),
-         Spacer(1, 8 * mm),
-         h("5", "Privacy–utility trade-off (measured on the practice data)"), two_col(RESULTS, 40 * mm),
+         Spacer(1, 9 * mm),
+         h("5", "Privacy–utility trade-off (measured on the practice data)"), two_col(RESULTS, 42 * mm),
          Spacer(1, 6), ladder(), Spacer(1, 4), Paragraph(TRADEOFF, S_SMALL),
-         h("6", "Security design: assume the server is breached one day"), cards(SECURITY),
-         KeepTogether([h("7", "Known limitations")] + bullets(LIMITS)),
-         Spacer(1, 5), Paragraph(TESTING, S_SMALL)]
+         KeepTogether([h("6", "Known limitations")] + bullets(LIMITS))]
     doc.build(s)
 
 
