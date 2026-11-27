@@ -1,0 +1,30 @@
+{NAME} ji ka sugar {VALUE} hai, dose {DOSE} unit hi note karein.
+Patient {NAME} ({AGE}/F) ko {DATE} ko admit kiya gaya.
+{REL} (husband) ka number {PHONE} hai; patient ka number alag verify karein.
+{NAME} ko C/O fever aur cough hai, temperature {VALUE}°F.
+K/C/O DM patient {NAME} ko Tab. {MEDICINE} {DOSE} BD diya ja raha hai.
+Dr. {DOCTOR} ne {NAME} ke liye {MEDICINE} {DOSE} prescribe ki.
+{NAME} ji ki BP reading {VALUE} hai; repeat reading {TIME} par lein.
+मरीज़ {NAME} को {DATE} को OPD में देखा गया; शिकायत: C/O headache.
+{NAME} की उम्र {AGE} साल दर्ज है; exact DOB record में न लिखें.
+ग्राम {VILLAGE} से आई {NAME} को हल्का बुखार है.
+Patient ke father {REL} se consent liya; contact {PHONE}.
+{NAME} ko Inj. {MEDICINE} {DOSE} IV stat diya gaya.
+Dr. {DOCTOR} ne kaha ki {NAME} ka Hb {VALUE} g/dL hai.
+{NAME} ji ko K/C/O HTN hai, current BP {VALUE}/{VALUE2}.
+आज {DATE} को {NAME} का follow-up हुआ; SpO2 {VALUE}%.
+{NAME} ki beti {REL} ko discharge instructions samjha diye.
+मरीज {NAME}, पत्नी {REL}, का पता {ADDRESS} है.
+{NAME} ko Tab. {MEDICINE} 500 mg TDS after food dena hai.
+C/O abdominal pain since {DURATION}; patient {NAME} ko review ke liye bulayein.
+{NAME} ka random blood sugar {VALUE} mg/dL aaya.
+Dr. {DOCTOR} ne {NAME} ko {DATE} tak rest advise kiya.
+{NAME} ji ke husband {REL} ne phone number {PHONE} confirm kiya.
+Patient {NAME} ({AGE}/M) ko ward {WARD} mein shift kiya.
+मरीज़ {NAME} को सांस फूलने की शिकायत है; SpO2 {VALUE}% on room air.
+{NAME} ko K/C/O asthma hai; nebulization {DOSE} as advised.
+Village {VILLAGE} resident {NAME} ka sample {DATE} ko collect hua.
+{NAME} ki mother {REL} ne allergy history deny ki.
+Prescription: {MEDICINE} {DOSE}; symptom C/O nausea — dono ko as-is rakhein.
+{NAME} ko {DATE} se {DATE2} tak {MEDICINE} course diya gaya.
+Dr. {DOCTOR} reviewed patient {NAME}; diagnosis K/C/O DM, BP {VALUE}.

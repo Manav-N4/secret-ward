@@ -1,0 +1,55 @@
+type,new_header
+NAME,Patient Full Name
+NAME,Rogi ka Naam
+NAME,मरीज़ का नाम
+NAME,रोगी का नाम
+NAME,नाम / Name
+NAME,Beneficiary Name
+NAME,UHID Holder
+NAME,नाम मरीज
+NAME,Pt. Name
+NAME,नाम रोगी
+PHONE,Sampark
+PHONE,Contact#
+PHONE,Mobile No.
+PHONE,मोबाइल नंबर
+PHONE,फोन नं
+PHONE,परिजन का मोबाइल
+PHONE,WhatsApp No
+PHONE,Primary Contact
+VILLAGE,Gram/Mohalla
+VILLAGE,ग्राम / गाँव
+VILLAGE,मोहल्ला
+VILLAGE,Locality
+VILLAGE,टोला
+VILLAGE,Ward / Basti
+VILLAGE,ग्राम पंचायत
+VILLAGE,Tehsil Village
+AGE,Umr (Saal)
+AGE,उम्र (वर्ष)
+AGE,आयु
+AGE,Patient Years
+AGE,Age in Yrs
+AGE,वय
+AGE,उम्र साल
+AGE,Completed Years
+DOB,Janam Din
+DOB,जन्म तिथि
+DOB,Date of Birth
+DOB,जन्मदिनांक
+DOB,DOB (DD-MM-YYYY)
+DOB,जन्म की तारीख
+DOB,Birth Dt
+DOB,जन्म दिन
+RELATIVE,पिता / पति का नाम
+RELATIVE,Guardian Name
+RELATIVE,Father/Husband
+RELATIVE,संबंधी का नाम
+RELATIVE,Next of Kin
+RELATIVE,परिजन
+ADDRESS,पूरा पता
+ADDRESS,स्थायी निवास
+ADDRESS,House / Street / Landmark
+ADDRESS,पता एवं गांव
+ADDRESS,मकान नं.
+ADDRESS,Residential Address
