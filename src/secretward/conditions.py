@@ -16,7 +16,7 @@ ICD = re.compile(r"\b([A-TV-Z])(\d{2})(?:\.\d{1,2})?\b")
 # "Diagnosis: Anaemia, unspecified (D64.9);"  "K/C/O addison's disease"  "Procedure: ..."
 TEXT_COND = re.compile(
     r"(?im)(?:final\s+)?(?:diagnosis|diagnoses|dx|procedure|operation|surgery done|k/c/o|known case of)"
-    r"\s*[:\-]?\s*([^\n;]{4,80}?)\s*(?:\(([A-TV-Z]\d{2}(?:\.\d{1,2})?)\))?\s*(?:[;\n.]|$)")
+    r"\s*(?:[:\-]\s*)?([^\n;]{4,80}?)\s*(?:\(([A-TV-Z]\d{2}(?:\.\d{1,2})?)\)\s*)?(?:[;\n.]|$)")
 
 
 def norm_cond(s: str) -> str:
