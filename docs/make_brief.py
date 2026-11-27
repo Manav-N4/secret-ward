@@ -41,7 +41,7 @@ CELLB = ParagraphStyle("cellb", parent=CELL, fontName="Body-Bold")
 
 # ----------------------------------------------------------------------------- text
 TEAM = "secret-ward"
-MEMBERS = "Manav · Aditya · Nishk · [fourth member]"
+MEMBERS = "Manav · Aditya · Nishk · Kavita"
 REPO = "github.com/Manav-N4/secret-ward"
 PITCH = ("A privacy firewall that finds people no dictionary knows, in English, Hindi and Hinglish, "
          "and proves its privacy with its own re-identification attacker.")
@@ -83,9 +83,13 @@ USP = [
     "<b>Schema-agnostic, memorisation-free detection:</b> columns are typed by content and names are learned "
     "per input. All 4 canaries (names from outside the local name pool, hidden in a visitor log, an ambulance "
     "remark, a helpdesk JSON field and a base64 attachment) are caught by context, not by a list.",
-    "<b>Privacy we measure ourselves:</b> a re-implementation of attacks A3-A5 from ATTACKS.md runs on every "
-    "change. It found that per-record age bands let pooled records reveal exact ages, and drove the "
-    "one-band-per-patient and local k-anonymity design.",
+    "<b>Our own model for names with no cue:</b> \"Spoke with Ramprasad about discharge\" has no label. Rules alone "
+    "catch 0% of such names on our blind test (names and drug words never seen in training); with our classifier "
+    "88%, while keeping 100% of drug names. It cannot memorise: it never sees the word itself.",
+    "<b>Privacy we measure ourselves:</b> a re-implementation of attacks A3-A5 from ATTACKS.md, plus a second "
+    "attacker written independently by QA, run on every change. They found that per-record age bands let pooled "
+    "records reveal exact ages, and drove the one-band-per-patient and local k-anonymity design: 0 / 48 patients "
+    "unique on what we release.",
     "<b>Precision-first, cross-script linking:</b> Mohammad in Devanagari = Mohammad = Mohd via a phonetic key, with merge "
     "blockers that kept both same-name homonym pairs apart (0 wrong merges).",
 ]
@@ -93,25 +97,33 @@ USP = [
 RESULTS = [
     ("Personal data leaked (overall / Devanagari / Hinglish)", "0 / 3230 (0.0% / 0.0% / 0.0%); canaries 0 / 4; "
      "also 0% in file names, keys, headers, metadata, base64"),
-    ("Medical values kept", "4826 / 4855 (99.4%), lost = districts hidden on purpose for the smallest groups; date intervals: 15286 / 15286 pairs exact"),
-    ("Linking precision / recall / F0.5", "1.00 / 1.00 / 1.00; 0 wrong merges; homonym traps kept apart"),
-    ("Patients pinned to ONE registry person", "45 / 48 on raw input → 1 / 48 on our output"),
-    ("Our attacker, ours vs raw (lower is better)", "A3 record linkage 0.67 → 0.031; A4 profile re-ID 93.8% → 6.2% "
-     "(kit reference 16.7%); A5 targeted 100% → 51.2%"),
-    ("Names with no cue (blind test)", "rules only 0% removed; rules + our classifier 88% removed, drug decoys "
-     "100% kept, other words 99.4% kept"),
-    ("Data we did not tune on", "no registration tables: 0 / 2263 leaked, recall 0.99; free text only: 0 / 569; "
-     "headers renamed to unseen wording: 0 / 3230; new phone, ID, DOB, label formats: 0 / 3230, linking 1.00 / 1.00"),
-    ("Run time / peak memory", "2.0 s / 27 MB for 200 files; linear scaling: 8,000 synthetic files with new people in "
-     "every file in 18 s / 274 MB (limits 15 min / 4 GB); identical on Python 3.9-3.13; byte-identical repeats; offline"),
+    ("Medical values kept", "4826 / 4855 (99.4%). All 29 lost are district names hidden on purpose; no medicine, "
+     "dose, lab or diagnosis lost. Date intervals: 15286 / 15286 pairs exact"),
+    ("Linking precision / recall / F0.5", "1.00 / 1.00 / 1.00; 0 wrong merges; both same-name homonym pairs kept apart"),
+    ("Re-identification risk (our estimate)", "patients unique on what we release (gender, age band, district) against "
+     "the attacker's 240-person register: <b>0 / 48</b> (raw 46 / 48; kit reference setting 20 / 48); each fits 3+ "
+     "people, median 21. Dates are shifted per patient, so a known admission week does not narrow it"),
+    ("Attackers, raw → ours (lower is better)", "ours: A3 record linkage 0.67 → 0.031, A4 re-identified 93.8% → 6.2%, "
+     "A5 targeted 100% → 51.2%; QA's independent attacker: 97.9% → 8.3% re-identified, A5 → 47.6%"),
+    ("Run time / peak memory", "200 files: 1.9 s / 35 MB. 8,000 synthetic files: 19.7 s / 282 MB (limits 15 min / "
+     "4 GB). Byte-identical repeats; identical on Python 3.9-3.13; offline"),
+    ("On data we did not tune on", "no registration tables 0 / 2263 leaked; free text only 0 / 569; headers renamed "
+     "0 / 3230; new ID/phone/date/label formats 0 / 3230 (linking 1.00 / 1.00); QA mutation harness, 8 seeds: 0 / 3230 "
+     "each; names with no cue (blind) 88% removed, drug decoys 100% kept; 40 Hinglish notes 105 / 105 name parts"),
+]
+
+LADDER = [
+    ("Setting (each step kept only if the attack justified it)", "Unique", "A4", "A5", "Medical", "Gen. utility"),
+    ("10-year bands only", "27%", "27%", "57%", "100%", "0.65"),
+    ("+ 20-year band for groups under 3", "15%", "12.5%", "57%", "100%", "0.62"),
+    ("+ hide district + PIN if still alone (shipped)", "0%", "6.2%", "51%", "99.4%", "0.41"),
 ]
 
 TRADEOFF = (
-    "<b>Why these settings.</b> Each was chosen by measurement. 10-year bands: on the registry, gender + 5-year "
-    "band + district leaves 101/240 people unique, 10-year bands 50/240. Hiding district for the smallest groups "
-    "costs 26 values (0.5%) but halves A4 (12.5% to 6.2%) and lowers A5. Villages are generalised to their district (truthful, already in the record). We also built "
-    "rare-diagnosis generalisation to ICD chapters and <b>switched it off</b>: for N = 1..5 it cost 2.1-6.1% of "
-    "medical values and left A5 flat. Two independently built attackers (ours and QA's) agree.")
+    "<b>What we give up:</b> in a 48-patient release most patients get a 20-year band and 29 lose their district "
+    "(generalisation utility 0.65 → 0.41); larger releases have bigger groups, so fewer are coarsened. Medicines, "
+    "doses, labs and stay lengths are never touched. <b>Tried and switched off:</b> rare-diagnosis generalisation to "
+    "ICD chapters cost 2.1-6.1% of medical values and left A5 flat; two independent attackers agree.")
 
 SECURITY = (
     "Assume breach. Quarantined files, the riskiest thing we hold, are kept only as <b>AES-256-GCM ciphertext</b> "
@@ -131,16 +143,13 @@ TESTING = (
     "matching (now linear); and a second, independent attacker that confirms our A5 conclusion.")
 
 LIMITS = [
-    "<b>Residual risk, A5 (targeted attack) about 51%:</b> not rare-disease leakage. Of the rare conditions, rabies "
-    "is already safe and the kala-azar patient is found purely through exact length of stay + hospital. The rest is "
-    "exact length of stay and profile consistency on moderately common conditions (TB, typhoid, diabetes: 6-9 "
-    "patients each). Stay length must stay exact for clinical integrity, so this is an accepted trade-off; larger "
-    "releases dilute it.",
-    "Names with no cue at all are caught 88% of the time on our blind test (sentence-initial words such as "
-    "\"Met\" are sometimes taken for names); Devanagari names without cues rely on the gazetteer only.",
-    "The phonetic key is coarse; rare transliterations may not link on unseen data (practice recall 1.00).",
-    "XML, PDF and images are quarantined, not cleaned. Our attacker approximates the official arena from its "
-    "published spec; the official numbers will differ.",
+    "<b>Targeted attack (A5) about 51%:</b> driven by exact length of stay + a consistent profile on common "
+    "conditions (TB, typhoid, diabetes: 6-9 patients each), not by rare diseases. Stay length must stay exact for "
+    "clinical integrity, so this is an accepted trade-off; larger releases dilute it.",
+    "Small releases are coarsened heavily (above). Names with no cue: 88%, not 100% (sentence-initial words such "
+    "as \"Met\" are sometimes taken for names); Devanagari names without cues rely on the learned gazetteer.",
+    "The phonetic key is coarse; rare transliterations may not link on unseen data. XML, PDF and images are "
+    "quarantined (encrypted), not cleaned. Our attackers follow the published spec; official numbers will differ.",
 ]
 
 
@@ -161,7 +170,7 @@ def diagram(width):
     d = Drawing(width, 74)
     stages = [
         ("Input dump", ["CSV · TSV · JSON", "FHIR · notes", "4 hospitals"]),
-        ("Ingest", ["4 encodings", "quarantine", "fail loudly"]),
+        ("Ingest", ["4 encodings", "quarantine", "(encrypted)"]),
         ("Pass 1: learn", ["type columns", "by content,", "learn names"]),
         ("Link", ["union-find", "merge blockers", "HMAC IDs"]),
         ("Pass 2: clean", ["normalise, IDs", "dates, ages, places", "names, 3 scripts"]),
@@ -211,8 +220,17 @@ def build(out: Path) -> None:
         ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 2.2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2), ("LEFTPADDING", (0, 0), (-1, -1), 3),
     ]))
-    s += [KeepTogether([Paragraph("5. Privacy-utility trade-off (measured)", H), t]), Spacer(1, 3),
-          Paragraph(TRADEOFF, BASE), Spacer(1, 2), Paragraph(TESTING, BASE),
+    lad = Table([[Paragraph(c, CELLB if i == 0 or j == 0 else CELL) for j, c in enumerate(r)]
+                 for i, r in enumerate(LADDER)],
+                colWidths=[width - 5 * 19 * mm] + [19 * mm] * 5)
+    lad.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), FILL), ("BACKGROUND", (0, 3), (-1, 3), FILL),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, RULE), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    s += [KeepTogether([Paragraph("5. Privacy-utility trade-off (measured)", H), t]), Spacer(1, 3), lad,
+          Spacer(1, 2), Paragraph(TRADEOFF, BASE), Spacer(1, 2), Paragraph(TESTING, BASE),
           Paragraph("6. Security design", H), Paragraph(SECURITY, BASE),
           Paragraph("7. Known limitations", H)] + bullets(LIMITS)
     doc.build(s)

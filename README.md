@@ -1,212 +1,199 @@
+<div align="center">
+
 # secret-ward
 
-An offline, CPU-only, LLM-free privacy firewall for multilingual (English, Hindi, Hinglish)
-hospital records. Built for Yugaantar DevForge, Track 3 "Secret Wards".
+**Yugaantar DevForge · Track 3 · Secret Wards**
 
-## What makes it different (USP)
+*An offline, CPU-only, LLM-free privacy firewall for English, हिंदी and Hinglish hospital records.*
 
-1. **Nothing is memorised, so it works on data it has never seen.** Column and key meanings are
-   inferred from the *values* (a 12-digit number is treated as an Aadhaar whatever the column is
-   called). Names, places and IDs are learned at run time from the input itself. Our name classifier
-   never sees the word it is judging, only its shape, ending and neighbours. Proof: renamed headers,
-   new formats, 8 random mutation seeds and 40 Hinglish notes all give **0 leaks**.
-2. **Our own trained model, not a borrowed one.** A ~600-weight averaged perceptron we trained on
-   synthetic data. It runs on CPU in microseconds, with no pretrained model, no LLM and no internet.
-   It finds names that have no label or cue: **0% → 88%** on a blind test, with 100% of drug names kept.
-3. **One patient, one pseudonym, never two people merged.** Linking works across files, hospitals and
-   scripts (Devanagari ↔ Latin). Merge blockers (gender, age gap, name sound) and a guard against
-   multi-patient records give **precision 1.00, recall 1.00, 0 wrong merges**.
-4. **Privacy measured by attack, not assumed.** Two independently built attackers (ours, and our
-   QA lead's from the published attack spec) agree: re-identification **98% → 8%**, record-linkage
-   risk **0.65 → 0.03**. Generalisation (wider age band, hidden location) is applied only to the
-   patients the attack shows are still exposed, so everyone else keeps more useful data.
-5. **Medical values stay exact.** 99.4% of the practice set's medical values survive byte for byte.
-   Drug names, lab ranges, doses and durations are protected by veto lists and shape rules.
-6. **Fail-safe by design.** Unprocessable files are quarantined as AES-256-GCM ciphertext, never as
-   copies. Logs carry only counts. Exit codes are loud. Output is deterministic and identical on
-   Python 3.9 and 3.13.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Results](#results-at-a-glance) · [Privacy vs utility](#privacy-vs-utility-measured) · [Security](#security-design) · [Limitations](#known-limitations) · [Project brief (PDF)](docs/brief.pdf)
 
-## Setup and run
+Team: Manav · Aditya · Nishk · Kavita
 
-**Requires Python 3.9 or newer** (tested on 3.9, 3.11, 3.12 and 3.13 with identical results).
-Use `python3`: many machines have no bare `python`.
+</div>
+
+---
+
+## The idea in one paragraph
+
+secret-ward takes a messy multi-hospital dump (CSV, TSV, JSON, FHIR, notes, in three scripts),
+removes every piece of personal data, keeps every medical value exact, and gives each real patient
+one keyed fake ID across all files. **Nothing is memorised:** column meanings are read from the
+*values*, not the header names, and names, places and ID numbers are learned from each new input
+while it runs. That is why renamed columns, new formats and names no dictionary knows are still
+caught. Privacy is not assumed: two attackers, built independently, test every change.
+
+## Results at a glance
+
+Practice data (`check_dev.py`), plus data we did **not** tune on:
+
+| | Result |
+|---|---|
+| 🔎 Personal data leaked | **0 / 3230** (0.0% English, 0.0% Devanagari, 0.0% Hinglish; 0% in file names, keys, headers, metadata, base64) |
+| 🐤 Canaries found | **0 / 4** |
+| 💊 Medical values kept | **4826 / 4855 (99.4%)**. All 29 "lost" values are district names we hide on purpose; every medicine, dose, lab and diagnosis is kept |
+| 📅 Date intervals / stay lengths | **15286 / 15286** pairs exact |
+| 🔗 Linking precision / recall / F0.5 | **1.00 / 1.00 / 1.00**, 0 wrong merges |
+| 🛡️ Patients unique on what we release | **0 / 48** (raw data: 46 / 48) |
+| 🕵️ Patients re-identified by attack | **98% → 6-8%** (two independent attackers) |
+| 🧪 Unseen data | renamed headers, new formats, no registration tables, free text only, 8 random format mutations: **0 leaks on all of them** |
+| ⚡ Speed / memory | 200 files: **1.9 s, 35 MB**. 8,000 files: **19.7 s, 282 MB** (limits: 15 min, 4 GB) |
+| 🔁 Reproducible | byte-identical output on repeat runs and across Python 3.9-3.13; a new secret changes every ID and date |
+
+## Quick start
+
+**Requires Python 3.9 or newer.**
 
 ```bash
-python3 -m pip install -r requirements.txt     # one optional package: cryptography (quarantine vault)
-RAKSHA_SECRET=<secret> python3 main.py --input <input dir> --output <empty output dir>
+python3 -m pip install -r requirements.txt          # one package: cryptography (quarantine vault)
+RAKSHA_SECRET=practice python3 main.py --input <input dir> --output <empty output dir>
 ```
 
-**Fails loudly, never silently:** exit code 2 if Python is older than 3.9; exit code 3 if
-most files fail inside our own code (instead of quarantining everything and reporting success).
+Check it against the organisers' kit (the `Secret-Wards-ToolKit` folder next to this repo):
 
-No network access is used at run time. The pipeline itself is standard library only (Devanagari transliteration is built in, `src/secretward/translit.py`). The one package, `cryptography`, only encrypts quarantined files; if it is missing the run still succeeds and quarantined files are simply not kept.
-
-**Models declared:** one small classical-ML model **we trained ourselves**: an averaged-perceptron
-name classifier (`src/secretward/ner.py`, about 600 weights in `src/secretward/ner_weights.json`,
-retrain with `python3 scripts/train_ner.py --kit <toolkit>`). Trained on synthetic sentences we
-generated (`scripts/nocue_data.py`, train split) plus the practice free text labelled by its answer key.
-It never sees the identity of the word it judges (only shape, endings and neighbouring words), so it
-cannot memorise names. No LLMs, no generative models, no pretrained models of any size.
-Switch it off with `ner_enabled: 0` in `config/policy.yaml`.
-
-**How the detectors combine:** column rules and the runtime gazetteer handle structured data; context
-rules (labels, relations, honorifics, triggers, log lines) handle names with cues; the classifier runs
-last, only on sentences of 6+ words, only on standalone Title-case words, and never on drug stems,
-medical suffixes, clinical or calendar words (`config/rules/medical_stems.txt`, `medical_words.txt`).
-
-## Architecture
-
-```
-input/ ──► read + decode (BOM, UTF-16, cp1252) ──► quarantine anything unparseable
-              │
-              ▼
-   PASS 1  harvest: classify every CSV column / JSON key by header hints AND value shape,
-           learn names, relatives, villages, ID numbers, PINs, districts from THIS input
-              │
-              ▼
-   LINK    union-find on strong keys (hospital IDs, phone, Aadhaar, ABHA) with
-           merge blockers (gender, age > 3 y apart, no shared sound-alike name token);
-           name-only records join only if exactly one cluster fits
-              │
-              ▼
-   PASS 2  sanitize every value: normalise → protect doctors/ASHA → base64 →
-           IDs → phones/Aadhaar/ABHA → DOB removed, dates shifted per patient →
-           ages → 10-year bands → addresses → district + PIN prefix → names
-           (labels, relatives, triggers, honorifics, gazetteer, cross-script, phone proximity)
-              │
-              ▼
-   WRITE   sanitized/ (same paths, formats, headers; PII file names renamed),
-           records.jsonl (pseudonym also written INSIDE each record), honest report.json
+```bash
+bash scripts/check_all.sh ../Secret-Wards-ToolKit --full    # every check below, ends in RESULT: PASS
 ```
 
-| Module | Job |
-|---|---|
-| `src/secretward/normalize.py` | mirrors the scorer: NFKC, zero-width removal, homoglyph folding, Devanagari digits |
-| `src/secretward/rules.py` + `config/rules/*.txt` | all labels, relations, honorifics, triggers, safe words, header hints as editable data |
-| `src/secretward/fields.py` | column/key semantics (hints + value shape) and per-type cleaning |
-| `src/secretward/gazetteer.py` | runtime name/place/ID gazetteer, cross-script skeleton key |
-| `src/secretward/translit.py` | built-in Devanagari to Latin transliteration (no dependency) |
-| `src/secretward/detect.py` | free-text sanitizer (layers listed above) |
-| `src/secretward/dates.py` | date finding/shifting in any format; DD/MM vs MM/DD voting per file and hospital ID prefix |
-| `src/secretward/link.py` | patient clustering with merge blockers |
-| `src/secretward/privacy.py` | HMAC pseudonyms, per-patient non-zero shifts, age bands, PIN prefix |
-| `src/secretward/pipeline.py` | orchestration, JSON/CSV/text handlers, quarantine, file renaming |
-| `src/secretward/vault.py` | encrypted quarantine vault (AES-256-GCM, per-file keys) |
+`raksha.toml` runs exactly the two commands above. No network is used during the run.
+The program **fails loudly**: exit code 2 on Python older than 3.9, exit code 3 if most files fail
+inside our own code, so it never reports success with missing output.
 
-## Privacy design (policy in `config/policy.yaml`)
+## How it works
 
-* **Pseudonyms:** `PSN-` + HMAC-SHA256(RAKSHA_SECRET, cluster key). Not reversible, changes with the secret.
-* **Dates:** every date of one patient shifts by the same secret non-zero offset (±180 days),
-  so intervals and stay lengths are exact while a global un-shift is impossible.
-* **Ages:** 10-year bands. On the practice registry, gender + 5-year band + district leaves
-  101/240 people unique; 10-year bands leave 50/240. DOB is removed (it would reveal the exact age).
-* **One band per patient:** every record of a linked patient gets the SAME truthful band (a
-  10-year window containing all their stated ages). Per-record bands let an attacker who pools
-  "40-49" and "50-59" learn the age is 49-50.
-* **Local k-anonymity:** patients whose (gender, band, district) group in the release has fewer
-  than `min_group_size` patients get a 20-year band; if still alone, district and PIN prefix are
-  hidden too. Only those patients are coarsened; everyone else keeps full detail.
-* **Location:** house, mohalla, village, tehsil removed; district kept; PIN reduced to 3 digits
-  (adds no identifying power beyond district on the practice data).
-* **Rare conditions (A5 defence, measured, shipped off):** `src/secretward/conditions.py` can generalise
-  diagnoses seen in very few patients to their ICD-10 chapter (`rare_condition_max_patients`). On the
-  practice data it cost 2.1-6.1% of medical values (N=1..5) and did not lower the targeted attack:
-  the attacker wins through common conditions combined with profile consistency and the exact length of
-  stay, which the rules require us to keep. Re-measured after the linking fix, N = 1..5: A5 stays at
-  0.486 while medical values fall to 97.9-93.9% (after the fragment-guard fix). QA's independently built
-  attacker agrees: A5 flat for every N from 0 to 5. Coarser k-anonymity (k up to 8, location hidden for
-  groups under 5) also leaves A5 at 0.486. In a ~50-patient release, condition + gender alone already
-  narrows typhoid or TB to one person. We keep it off and report A5 as our known residual risk.
-* **Replacements:** typed placeholders (`[NAME]`, `[PHONE]` …), never fake names (a fake name can
-  collide with a real person and count as a leak).
+<div align="center">
+<img alt="Input dump → ingest → learn → link → detect → privacy → output; unsafe files go to an encrypted quarantine" src="docs/assets/architecture.svg" width="100%">
+</div>
+
+| Stage | What it does | Why |
+|---|---|---|
+| **1 · Ingest** | Reads UTF-8, UTF-8 with BOM, UTF-16 and cp1252. Normalises text the way the scorer does (NFKC, look-alike letters, zero-width characters, Devanagari digits, base64). Corrupt, truncated, empty, too-deep, mislabelled, PDF, image and XML files are **quarantined**, never copied | a leak in disguise is still a leak |
+| **2 · Learn** | Types every CSV column and JSON key by header hints **and value shape** (12 digits = Aadhaar, 14 = ABHA, a mobile pattern, place-name endings such as -pur, -ganj, Khurd). Learns this input's names, villages and ID numbers | unseen headers and new patients are handled without any list from practice data |
+| **3 · Link** | Joins records that share strong keys (hospital ID, phone, Aadhaar, ABHA). **Merge blockers:** different gender, ages more than 3 years apart, or no sound-alike name means never merge. Records that list many patients never bridge two people. Name-only records join only if exactly one patient fits. Fake ID = `PSN-` + HMAC-SHA256(secret, patient), written inside every record | precision first: merging two people is worse than missing a link |
+| **4 · Detect** | Names from labels (`Name:`, `Naam:`, `नाम:`), relation markers (S/o, W/o), triggers ("called by"), honorifics and Hinglish kin words (ji, sahab, Chachu), log lines, phone proximity, the learned gazetteer, and a **cross-script phonetic key** (मोहम्मद = Mohammad = Mohd). Last, **our own trained classifier** catches names with no cue at all. Doctors, ASHA, doses (1-0-1, 650 mg), eponyms and "C/O fever" vs "C/O Ramesh" are protected | every script, every hiding place, without breaking clinical text |
+| **5 · Privacy** | Per-patient secret date shift (non-zero, ±180 days). One truthful 10-year age band per patient across all records. DOB, house, mohalla, village, tehsil removed; district and first 3 PIN digits kept. **Local k-anonymity:** small groups get a 20-year band; anyone still alone also loses district and PIN | stay lengths stay exact, but a known admission date no longer points to the record |
+| **Output** | `sanitized/` (same paths, formats, headers; file names with PII renamed), `records.jsonl`, an honest `report.json` | the official contract (`validate_output.py`: CONTRACT OK) |
+
+**Model declared.** One small classical-ML model **we trained ourselves**: an averaged-perceptron
+name classifier (`src/secretward/ner.py`, about 600 weights in `ner_weights.json`). It is trained on
+synthetic sentences we generated plus the practice notes labelled by their answer key. It never sees
+the word it judges, only its shape, ending and neighbouring words, so it **cannot memorise names**.
+Drug stems, medical suffixes and clinical words can never be tagged. No LLM, no generative model,
+no pretrained model of any size. Retrain: `python3 scripts/train_ner.py --kit <kit>`. Switch off:
+`ner_enabled: 0` in `config/policy.yaml`.
+
+All rules (labels, relation markers, honorifics, header hints, safe words, medical stems) are plain
+text files in `config/rules/`, so a Hindi reader can extend them without touching code.
+
+## What makes it different
+
+1. **Works on data it has never seen.** Columns are typed by content and names are learned per input.
+   All 4 canaries (names from outside the local name pool, hidden in a visitor log, an ambulance remark,
+   a helpdesk JSON field and a base64 attachment) are caught by context, not by a list.
+2. **Our own model for names with no cue.** "Spoke with Ramprasad about discharge" has no label. Rules
+   alone catch 0% of such names on our blind test; with the classifier, **88%**, while keeping 100% of
+   drug names. On 40 Hinglish nursing notes from a teammate: 105 / 105 name parts removed.
+3. **Cross-script, precision-first linking.** One patient keeps one ID across hospitals and scripts;
+   the merge blockers kept both same-name homonym pairs apart (0 wrong merges).
+4. **Privacy proven by attack.** Our re-implementation of the published attacks (A3-A5) and a second
+   attacker written independently by our QA lead agree. Every privacy setting below was chosen by
+   measuring it.
+
+## Privacy vs utility (measured)
+
+Each step was kept only because the attack numbers justified its cost (`scripts/reid_risk.py`,
+`scripts/attack.py`, `scripts/score.py`):
+
+| Setting | Patients unique on (gender, age band, district) | Re-identified (A4) | Targeted attack (A5) | Medical kept | Generalisation utility |
+|---|---:|---:|---:|---:|---:|
+| raw data (gender + exact age + village) | 95.8% | 93.8% | 100% | 100% | n/a |
+| 10-year bands only | 27.1% | 27.1% | 57.1% | 100% | 0.65 |
+| + 20-year band for small groups | 14.6% | 12.5% | 57.1% | 100% | 0.62 |
+| **+ hide district if still alone (shipped)** | **0%** | **6.2%** | **51.2%** | **99.4%** | **0.41** |
+
+*For comparison, the kit's reference setting (5-year bands + district) leaves 41.7% of these
+patients unique on the same register.*
+
+**What we give up:** in a release this small (48 patients), local k-anonymity widens most patients to a
+20-year band, and 29 of them lose their district. Larger releases have bigger groups, so fewer people
+are coarsened. **What we gain:** no patient is unique on what we release; every one fits at least 3
+people in the attacker's register (median 21).
+
+**What we tried and switched off:** generalising rare diagnoses to their ICD chapter cost 2-6% of
+medical values and did not lower A5. Two attackers agree that A5 comes from the exact length of stay
+plus a consistent profile, and the rules require stay lengths to stay exact. Details: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Security design
 
-Threat model: assume the server (and the output folder) is stolen one day.
+*Assume the server is breached one day.*
 
-* **Encrypted quarantine vault.** A quarantined file is the riskiest thing we hold, because nothing
-  was removed from it. It is kept only as AES-256-GCM ciphertext in `output/quarantine/<sha256>.swv`
-  (the spec's allowed, unscanned folder), never under its original name, which can itself be PII.
-  Each file gets its own key and nonce, derived with HKDF-SHA256 from `RAKSHA_SECRET` and the file's
-  SHA-256: a leaked per-file key opens one file, not the vault. GCM authenticates, so a tampered
-  file refuses to open. If encryption is unavailable, nothing is written: plaintext is never a fallback.
-  `scripts/vault_check.py --check` proves exact restore, wrong-key refusal, tamper refusal and no
-  plaintext runs (7 / 7 on the practice data); `--open SHA --to PATH` is the authorised-operator restore.
-* **Keys kept away from data.** The only secret is `RAKSHA_SECRET`, held in the environment, never
-  printed, logged or written. The output folder holds ciphertext, HMAC pseudonyms and shifted dates;
-  none of them can be reversed without the secret.
-* No other intermediate data is written to disk: parsing, linking and cleaning happen in memory, and
-  the vault writes ciphertext only (via a temp file that is itself ciphertext).
-* The secret is read from the environment only and never printed or stored.
-* stdout prints counts only; a custom exception hook prints only the exception type (Python error
-  messages can contain record values); quarantine reasons are fixed codes.
-* Village/locality columns are recognised by their **values** (place-name morphology such as
-  -pur, -ganj, Kalan, Khurd, plus places learned from other files), not only by header name.
-* Files we cannot parse safely (corrupt, truncated, too deeply nested, wrong format, binary, PDF, images, XML)
-  are quarantined, never copied.
+* **Encrypted quarantine.** A file we cannot clean is the riskiest thing we hold. It is kept only as
+  **AES-256-GCM** ciphertext in `output/quarantine/<sha256>.swv` (the folder the spec allows), named by
+  hash, never by its original name, which may itself contain PII. Each file gets its own key, derived
+  with HKDF-SHA256 from `RAKSHA_SECRET`, so one leaked key opens one file. Tampering is detected. If
+  encryption is unavailable, **nothing** is kept; plaintext is never a fallback.
+  `scripts/vault_check.py --check` proves exact restore, wrong-key refusal and tamper refusal (7 / 7).
+* **Keys away from data.** The only secret is `RAKSHA_SECRET`, read from the environment and never
+  printed, logged or written. Fake IDs and date shifts are keyed HMACs: irreversible without it.
+* **No plaintext at rest.** Parsing, linking and cleaning happen in memory; the vault writes ciphertext only.
+* **PII-free logs.** stdout prints counts only. A custom exception hook prints only the error type
+  (Python error messages can contain record values). Quarantine reasons are fixed codes, and files are
+  identified by SHA-256. Our QA scan of stdout, stderr, TMPDIR, HOME, the report and file names found 0 hits.
 
-## Dev tools (practice data only, never run on hidden data)
+## How we tested
 
-| Script | What it measures |
-|---|---|
-| `bash scripts/check_all.sh [kit] [--full]` | the whole routine: pipeline, contract, self-check, traps, attacker, (held-out), submission check |
-| `scripts/attack.py` | our re-implementation of attacks A3-A5 from the kit's ATTACKS.md, ours vs raw. On data other than the default practice set pass `--input` and `--truth` (and `--registry`/`--facts`) |
-| `scripts/heldout.py` | leaks when name sources are removed (no registration tables, free text only) |
-| `scripts/nocue_eval.py`, `scripts/train_ner.py` | blind no-cue name test; retrain the classifier |
-| `scripts/hinglish_eval.py` | 40 Hinglish nursing notes, names with no registration table |
-| `qa/mutate.py`, `qa/attack_sim.py` | independent QA: format-mutation harness (rewrites truth too), second attacker |
-| `scripts/vault_check.py` | quarantine vault: exact restore, wrong key and tampering refused, no plaintext |
-| `scripts/score.py` | estimates official parts check_dev does not show: temporal intervals, generalization, token retention |
-| `scripts/lost_probes.py`, `scripts/link_misses.py` | which medical values we lost, which links we missed |
+`bash scripts/check_all.sh <kit> --full` runs everything in one go:
 
-## Measured on the practice data (`check_dev.py`)
-
-| Metric | Starter | secret-ward v0.1 |
+| Check | What it proves | Result |
 |---|---|---|
-| PII pieces leaked | 2718 / 3230 (84.1%) | 0 / 3230 |
-| Canaries found | 4 / 4 | 0 / 4 |
-| Medical values kept | 4855 / 4855 | 4826 / 4855 (99.4%; 29 districts hidden on purpose for the smallest groups) |
-| Temporal intervals (`scripts/score.py`) | n/a | 15286 / 15286 date pairs exact |
-| Linking precision / recall | 0 / 0 | 1.00 / 1.00 (was 0.82: disease durations like "x 8 yrs" were misread as ages; a hospital name was read as a patient name) |
-| Runtime | ~2 s | ~2 s (linear: 8,000 synthetic files with 40,000 distinct people in 18 s, 274 MB) |
+| kit `validate_output.py`, `check_dev.py`, `check_submission.py --run` | official contract, practice score | CONTRACT OK · 0 leaks · READY TO SUBMIT |
+| `tests/test_traps.py` | meaning traps: doctors, doses, C/O, relation markers, headers, IDs stored as numbers | 34 + 5 + 7 cases, 0 failures |
+| `scripts/heldout.py` | no registration tables · free text only · renamed headers · new formats | 0 leaks on each |
+| `qa/mutate.py` (QA lead) | rewrites data **and answer key** (Hinglish keys, flipped dates, "Shahid, Md.") over 8 seeds | 0 / 3230 on every seed |
+| `scripts/nocue_eval.py` | names with no cue; blind test set never seen in training | 88% removed, 100% drug names kept |
+| `scripts/hinglish_eval.py` | 40 Hinglish nursing notes from a teammate | 105 / 105 name parts, 19 / 19 clinical words |
+| `scripts/attack.py`, `qa/attack_sim.py` | two independent attackers, ours vs raw | A3 0.67 → 0.03 · A4 94% → 6% · A5 100% → 51% |
+| `scripts/reid_risk.py` | uniqueness against the attacker's register | 0 / 48 unique |
+| `scripts/vault_check.py` | encrypted quarantine | 7 / 7 |
 
-Privacy, measured with `scripts/attack.py` (our approximation of the official arena; lower is better):
+Most of these tools found a real bug during the event before reaching their current number (for
+example: Python 3.9 silently quarantining every file, disease durations read as ages, an Aadhaar
+stored as a JSON number). Each bug and fix is in the pull-request history.
 
-| Attack | Raw input | v0.1 | v0.2 (one band per patient + local k-anonymity) |
-|---|---|---|---|
-| A3 record linkage, mean probability on the true person | 0.670 | 0.086 | 0.031 |
-| A4 patients re-identified after pooling (confidence >= 0.5) | 93.8% | 37.5% | 6.2% |
-| A5 targeted attack success | 100% | 51.4% | 51.2% (complete patient clusters give the attacker fuller profiles) |
+## Repository map
 
-No-cue names (`scripts/nocue_eval.py`, blind: test templates, names and drug decoys never seen in
-training): rules only 0% of names removed; rules + classifier **88% removed, 100% of drug decoys kept,
-99.4% of other words kept**.
-
-Hinglish nursing notes (`scripts/hinglish_eval.py`, 40 notes written by a teammate, no registration
-table): **105 / 105 name parts removed, 40 / 40 notes fully clean, 19 / 19 clinical words kept**,
-both one note per file and all 40 as one multi-line note. This set found a real bug: a name that
-started the second line of a note was judged with the previous line as context (74% before the fix).
-
-Held-out (`scripts/heldout.py`): without registration tables 0 / 2263 PII leaked; free text only 0 / 569;
-every CSV header renamed to unseen wording 0 / 3230, linking precision 1.00; phones, Aadhaar,
-IDs, DOBs, labels and relation markers rewritten into new formats 0 / 3230, linking 1.00 / 1.00.
-
-Independent QA (`qa/`, built by our QA lead without reading our detection code):
-* `qa/mutate.py` rewrites the practice set (headers and JSON keys renamed into Hinglish, date order
-  swapped, "Last, First" and "Md." name forms, FHIR identifier systems swapped: about 1,500 changes
-  per seed) **and rewrites the answer key to match**, so a leak in a new form is still counted.
-  Over 8 seeds: **0 / 3230 leaked on every seed**, medical 99.4%, linking 1.00 / 1.00. Two seeds
-  found one real leak first (an Aadhaar stored as a JSON number under an unknown key, `"uid_sankhya"`),
-  fixed: numbers with 10 or more digits now go through the same ID rules as text.
-* `qa/attack_sim.py`, a second attacker: raw → ours, A3 record risk 0.648 → 0.028, patients
-  re-identified 97.9% → 8.3%, A5 targeted success 100% → 47.6%.
+| Path | What it is |
+|---|---|
+| `main.py`, `raksha.toml` | entry point and run contract |
+| `src/secretward/pipeline.py` | orchestration: read, quarantine, learn, link, clean, write |
+| `src/secretward/fields.py` | column / key typing by header and value shape |
+| `src/secretward/detect.py` | free-text detection layers |
+| `src/secretward/ner.py`, `ner_weights.json` | our trained name classifier |
+| `src/secretward/gazetteer.py`, `translit.py` | learned name list, cross-script phonetic key, Devanagari → Latin |
+| `src/secretward/link.py` | patient clustering with merge blockers |
+| `src/secretward/privacy.py`, `dates.py` | HMAC IDs, date shifts, age bands, k-anonymity |
+| `src/secretward/vault.py` | encrypted quarantine |
+| `config/policy.yaml`, `config/rules/` | every setting and rule list, as editable data |
+| `tests/`, `scripts/`, `qa/` | tests and measurement tools (dev only; they read the kit's practice answer key) |
+| `docs/brief.pdf`, `docs/DESIGN.md` | the 2-page Project Brief and detailed design notes |
 
 ## Known limitations
 
-* Tuned and measured on the practice data so far; the unseen-format round will expose gaps.
-* Free-text names with no label, honorific, relation marker, trigger or gazetteer match are missed.
-* Cross-script matching uses a coarse phonetic skeleton; rare spellings can slip.
-* XML/PDF/image files are quarantined rather than cleaned.
-* A5 (targeted attack, about 49% on practice data) is our weakest privacy number. Its main drivers (common
-  condition + exact length of stay + consistent profile) cannot be removed without breaking clinical utility.
-* With only ~50 patients per release, local k-anonymity coarsens many patients; on larger releases fewer will be affected.
+* **Targeted attack (A5) about 51%** on our approximation of the arena. It comes from the exact length
+  of stay plus a consistent profile on common conditions, not from rare diseases. Stay lengths must
+  stay exact, so we accept this risk; larger releases dilute it.
+* **Small releases are coarsened heavily.** With 48 patients, most get a 20-year age band and 29 lose
+  their district.
+* **Names with no cue:** 88%, not 100%. Sentence-initial words such as "Met" are sometimes taken
+  for names. Devanagari names without any cue rely on the learned gazetteer only.
+* The cross-script phonetic key is coarse; rare transliterations may not link on unseen data.
+* XML, PDF and images are quarantined (encrypted), not cleaned.
+* Our attackers follow the published attack spec; the official arena's numbers will differ.
+
+---
+
+<div align="center">
+
+All data used is synthetic. Built during Yugaantar DevForge by Manav, Aditya, Nishk and Kavita.
+
+</div>
