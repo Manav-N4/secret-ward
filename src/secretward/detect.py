@@ -239,7 +239,7 @@ def clean_dates(text: str, ctx: Ctx) -> str:
 
 # ---------------------------------------------------------------------------- 6. ages, addresses
 AGE_PATTERNS = [
-    re.compile(r"(?i)(\bage(?:d)?\s*(?:/\s*sex)?\s*[:\-]?\s*)(\d{1,3})(?!\d)"),
+    re.compile(r"(?i)(\bage(?:d)?\s*(?:/\s*sex\s*)?(?:[:\-]\s*)?)(\d{1,3})(?!\d)"),
     re.compile(r"(?i)(\bumar\s*[:\-]?\s*)(\d{1,3})(?!\d)"),
     re.compile(r"((?:आयु|उम्र)\s*[:\-]?\s*)(\d{1,3})(?!\d)"),
     re.compile(r"(?i)()(?<![x×]\s)(?<![\d.])(\d{1,3})(?=\s*(?:years?|yrs?\.?|y)\s*(?:old|/\s*[MF]\b|\s+[MF]\b|,\s*(?:male|female)))"),
