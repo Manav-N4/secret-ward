@@ -94,9 +94,16 @@ def place_like(v: str) -> bool:
     return bool(set(low) & PLACE_WORDS) or (low[-1].endswith(PLACE_ENDS) and len(low[-1]) > 4)
 
 
+CLASSIFY_SAMPLE = 5000                            # column typing needs a sample, not every value
+
+
 def classify(key: str, values: list, path: tuple = ()) -> str:
     h = hint_type(key)
-    v = value_type([x for x in values if isinstance(x, str)])
+    strs = [x for x in values if isinstance(x, str)]
+    if len(strs) > CLASSIFY_SAMPLE:              # a 1M-row bulk export: an even, deterministic sample
+        step = len(strs) / CLASSIFY_SAMPLE
+        strs = [strs[int(i * step)] for i in range(CLASSIFY_SAMPLE)]
+    v = value_type(strs)
     path_toks = set()
     for p in path:
         path_toks.update(key_tokens(str(p))[0])

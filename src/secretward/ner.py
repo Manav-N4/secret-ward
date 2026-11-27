@@ -100,6 +100,10 @@ class NameTagger:
         starts fresh, so "...gaye.\nSunil Das ko" reads like "Sunil Das ko" at file start."""
         if not self.w:
             return []
+        # the 6-word minimum keeps the model off short FIELD VALUES (a whole cell "Ramesh Yadav");
+        # it applies to the whole text, while context is still read line by line
+        if sum(1 for t, _, _ in tokens(text) if WORDLIKE.match(t)) < MIN_WORDS:
+            return []
         out, pos = [], 0
         for line in text.split("\n"):
             out += [(pos + a, pos + b) for a, b in self._line_spans(line, extra_medical)]
@@ -109,7 +113,7 @@ class NameTagger:
     def _line_spans(self, text: str, extra_medical=frozenset()) -> list[tuple[int, int]]:
         tk = tokens(text)
         words = [t for t, _, _ in tk]
-        if sum(1 for t in words if WORDLIKE.match(t)) < MIN_WORDS:
+        if sum(1 for t in words if WORDLIKE.match(t)) < 2:
             return []
         hits = []
         for i, (t, s, e) in enumerate(tk):
@@ -128,6 +132,10 @@ class NameTagger:
                 merged[-1] = (merged[-1][0], e)
             else:
                 merged.append((s, e))
+        if sum(1 for t in words if WORDLIKE.match(t)) < MIN_WORDS:
+            # a short line gives little context: only accept a full name ("Kavita Kushwaha"),
+            # never one capitalised word ("Visit: 5 September", "Codes follow ICD-10")
+            merged = [(s, e) for s, e in merged if re.search(r"\s", text[s:e])]
         return merged
 
 

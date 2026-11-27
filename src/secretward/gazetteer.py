@@ -7,6 +7,7 @@ names and JSON keys, in Latin and Devanagari. New hidden patients are learned th
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from .rules import GENERIC_TOKENS, SAFE_WORDS
 from .translit import deva_to_latin
@@ -17,6 +18,7 @@ ALIASES = {"mohd": "mohammad", "md": "mohammad", "mohammed": "mohammad", "muhamm
            "mohamad": "mohammad", "mohammad": "mohammad"}
 
 
+@lru_cache(maxsize=200_000)
 def skeleton(token: str) -> str:
     """Cross-script phonetic key: मोहम्मद, Mohammad, Mohd -> 'mhmd'. Coarse on purpose."""
     t = token.strip(".'’").lower()
