@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" font-family="Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="1000" height="300" rx="10" fill="#ffffff"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#52606D"/>
+    </marker>
+  </defs>
+  <style>
+    .box{fill:#EEF5F1;stroke:#0B6E4F;stroke-width:1.5}
+    .end{fill:#ffffff;stroke:#0B6E4F;stroke-width:1.5}
+    .t{font-size:14px;font-weight:bold;fill:#0B6E4F;text-anchor:middle}
+    .l{font-size:11.5px;fill:#1F2933;text-anchor:middle}
+    .ar{stroke:#52606D;stroke-width:1.6;fill:none}
+    .note{font-size:12px;fill:#52606D;text-anchor:middle}
+    .vault{fill:#FFF7E6;stroke:#B7791F;stroke-width:1.5}
+    .vt{font-size:13px;font-weight:bold;fill:#975A16;text-anchor:middle}
+  </style>
+
+  <!-- 7 stages: x = 15 + i*140, width 120 -->
+  <rect class="end" x="15"  y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="75" y="64">Input dump</text>
+  <text class="l" x="75" y="84">CSV · TSV · JSON</text><text class="l" x="75" y="100">FHIR · notes</text><text class="l" x="75" y="116">EN · हिंदी · Hinglish</text>
+
+  <rect class="box" x="155" y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="215" y="64">1 · Ingest</text>
+  <text class="l" x="215" y="84">4 encodings</text><text class="l" x="215" y="100">normalise like</text><text class="l" x="215" y="116">the scorer</text>
+
+  <rect class="box" x="295" y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="355" y="64">2 · Learn</text>
+  <text class="l" x="355" y="84">type columns</text><text class="l" x="355" y="100">by their values;</text><text class="l" x="355" y="116">learn names, IDs</text>
+
+  <rect class="box" x="435" y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="495" y="64">3 · Link</text>
+  <text class="l" x="495" y="84">strong keys +</text><text class="l" x="495" y="100">merge blockers</text><text class="l" x="495" y="116">HMAC pseudonym</text>
+
+  <rect class="box" x="575" y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="635" y="64">4 · Detect</text>
+  <text class="l" x="635" y="84">rules · gazetteer</text><text class="l" x="635" y="100">cross-script key</text><text class="l" x="635" y="116">own classifier</text>
+
+  <rect class="box" x="715" y="40" width="120" height="96" rx="8"/>
+  <text class="t" x="775" y="64">5 · Privacy</text>
+  <text class="l" x="775" y="84">per-patient shift</text><text class="l" x="775" y="100">one age band</text><text class="l" x="775" y="116">local k-anonymity</text>
+
+  <rect class="end" x="855" y="40" width="130" height="96" rx="8"/>
+  <text class="t" x="920" y="64">Output</text>
+  <text class="l" x="920" y="84">sanitized/</text><text class="l" x="920" y="100">records.jsonl</text><text class="l" x="920" y="116">report.json</text>
+
+  <path class="ar" d="M135,88 H153" marker-end="url(#a)"/>
+  <path class="ar" d="M275,88 H293" marker-end="url(#a)"/>
+  <path class="ar" d="M415,88 H433" marker-end="url(#a)"/>
+  <path class="ar" d="M555,88 H573" marker-end="url(#a)"/>
+  <path class="ar" d="M695,88 H713" marker-end="url(#a)"/>
+  <path class="ar" d="M835,88 H853" marker-end="url(#a)"/>
+
+  <!-- quarantine branch -->
+  <path class="ar" d="M215,136 V196 H853" marker-end="url(#a)"/>
+  <text class="note" x="520" y="188">files we cannot clean safely (corrupt, PDF, image, XML, too deep) are never copied</text>
+  <rect class="vault" x="855" y="172" width="130" height="50" rx="8"/>
+  <text class="vt" x="920" y="193">quarantine/</text>
+  <text class="l" x="920" y="210">AES-256-GCM only</text>
+
+  <!-- dev loop -->
+  <rect x="295" y="240" width="540" height="40" rx="8" fill="#ffffff" stroke="#CBD2D9" stroke-dasharray="5 4"/>
+  <text class="note" x="565" y="265">dev only: two attackers + held-out, mutation and trap tests measure every change</text>
+</svg>
