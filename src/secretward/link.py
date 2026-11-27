@@ -116,6 +116,7 @@ class Linker:
                     cands.append(r)
             if len(cands) == 1:
                 self.union(cands[0], i)
+                roots.discard(cands[0]); roots.add(self.find(i))
         out = {}
         for i, (uid, ev) in enumerate(self.units):
             r = self.find(i)
