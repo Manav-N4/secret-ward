@@ -13,3 +13,7 @@ rare_condition_max_patients: 0  # 0 = off. If N > 0, a diagnosis/procedure seen 
                            # length of stay (which must stay exact). So it ships off; see README.
 ner_enabled: 1              # our own trained name classifier (src/secretward/ner.py) for names
                            # without cues; 0 = rules only. Measured: see README.
+
+# resource governor: files that would exceed these are quarantined (encrypted), never parsed
+memory_budget_mb: 2600
+time_budget_seconds: 720

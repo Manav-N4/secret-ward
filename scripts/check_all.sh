@@ -46,6 +46,8 @@ echo "== 5b. utility estimate (temporal, generalization, token retention)"
 if [ "$FULL" = "--full" ]; then
   echo "== 6. held-out stress tests"
   "$PY" scripts/heldout.py --kit "$KIT"
+  echo "== 6b. torture test (hostile real-world inputs: empty, huge, disguised, PII folders, symlinks)"
+  "$PY" scripts/torture.py --kit "$KIT" --big-mb 5 | grep -E "^exit|contract|planted|RESULT" || fail=1
 fi
 
 echo "== 7. official submission check (3 runs)"

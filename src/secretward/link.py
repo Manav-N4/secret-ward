@@ -50,12 +50,20 @@ class Linker:
     def __init__(self, units: list) -> None:
         self.units = units                       # list of (unit_id, Evidence), deterministic order
         self.parent = list(range(len(units)))
-        self.cl = {i: self._summary(ev) for i, (_, ev) in enumerate(units)}
+        # summaries are built lazily: a record that never merges (most rows of a bulk export)
+        # never pays for a second copy of its evidence
+        self.cl: dict[int, dict] = {}
 
     @staticmethod
     def _summary(ev: Evidence) -> dict:
         return {"names": set(ev.names), "rel": set(ev.relatives), "g": set(ev.genders),
                 "ages": list(ev.ages), "keys": set(ev.keys)}
+
+    def S(self, r: int) -> dict:
+        c = self.cl.get(r)
+        if c is None:
+            c = self.cl[r] = self._summary(self.units[r][1])
+        return c
 
     def find(self, i: int) -> int:
         while self.parent[i] != i:
@@ -76,16 +84,19 @@ class Linker:
                 return True
         return False
 
-    def union(self, i: int, j: int) -> None:
+    def union(self, i: int, j: int) -> int | None:
+        """Merge the clusters of i and j unless a blocker forbids it. Returns the dropped root."""
         ri, rj = self.find(i), self.find(j)
-        if ri == rj or self._conflict(self.cl[ri], self.cl[rj]):
-            return
+        if ri == rj or self._conflict(self.S(ri), self.S(rj)):
+            return None
         lo, hi = min(ri, rj), max(ri, rj)
         self.parent[hi] = lo
-        a, b = self.cl[lo], self.cl.pop(hi)
+        a, b = self.S(lo), self.S(hi)
+        self.cl.pop(hi, None)
         for k in ("names", "rel", "g", "keys"):
             a[k] |= b[k]
         a["ages"] += b["ages"]
+        return hi
 
     def run(self) -> dict:
         by_key: dict[str, list[int]] = {}
@@ -96,14 +107,25 @@ class Linker:
             members = by_key[k]
             for j in members[1:]:
                 self.union(members[0], j)
-        # weak attach: name-only records
+        # weak attach: name-only records. BLOCKING: a cluster can only qualify if it holds every
+        # token of one of the record's name keys, so we look up exactly those clusters in a
+        # token -> roots index instead of scanning every cluster (was quadratic)
         roots = {self.find(i) for i, (_, ev) in enumerate(self.units) if ev.keys}
+        index: dict[str, set[int]] = {}
+        for r in roots:
+            for n in self.S(r)["names"]:
+                for t in n:
+                    index.setdefault(t, set()).add(r)
         for i, (_, ev) in enumerate(self.units):
             if ev.keys or not ev.names:
                 continue
             me = self._summary(ev)
+            pool = set()
+            for n in ev.names:
+                if n:
+                    pool |= set.intersection(*(index.get(t, set()) for t in n))
             cands = []
-            for r in sorted(roots):
+            for r in sorted(pool):
                 c = self.cl[r]
                 if self._conflict(me, c):
                     continue
@@ -115,12 +137,19 @@ class Linker:
                 if strong_name or (one_name and rel_ok):
                     cands.append(r)
             if len(cands) == 1:
-                self.union(cands[0], i)
-                roots.discard(cands[0]); roots.add(self.find(i))
+                old_names = set(self.cl[cands[0]]["names"])
+                dropped = self.union(cands[0], i)
+                if dropped is not None:
+                    new_root = self.find(i)
+                    for n in old_names | self.cl[new_root]["names"]:
+                        for t in n:
+                            bucket = index.setdefault(t, set())
+                            bucket.discard(dropped)
+                            bucket.add(new_root)
         out = {}
         for i, (uid, ev) in enumerate(self.units):
             r = self.find(i)
-            c = self.cl[r]
+            c = self.cl.get(r) or {"keys": self.units[r][1].keys}
             if not c["keys"]:
                 out[uid] = None
                 continue

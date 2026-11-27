@@ -59,16 +59,13 @@ HOW = [
     ("Ingestion", "UTF-8, UTF-8-BOM, UTF-16 and cp1252; CSV/TSV, JSON, FHIR R4, text. Empty, corrupt, "
      "truncated, too-deep, mislabelled, binary, PDF, image and XML files are quarantined with a fixed reason "
      "code, never copied. Python errors that hit most files exit non-zero instead of reporting success."),
-    ("Detection", "Pass 1 classifies every column/key by header hints <i>and</i> value shape (phones, "
-     "Aadhaar, ABHA, hospital-ID pattern, place-name morphology such as -pur/-ganj/Kalan/Khurd, S/o-W/o "
-     "prefixes, dates of birth) and harvests a runtime gazetteer. Pass 2 cleans text after normalising like "
-     "the scorer (NFKC, homoglyphs, zero-width, Devanagari digits, base64). Names come from labels "
-     "(Name:, Naam:, and the Devanagari label), relation markers, context triggers (\"called by\", \"witnessed by\"), honorifics and "
-     "Hinglish kinship words (ji, sahab, Papa, Chachu), nursing log lines, phone proximity, the gazetteer and "
-     "a cross-script phonetic key (Devanagari to Latin, built in). Last, <b>our own trained classifier</b> (averaged "
-     "perceptron, ~600 weights) catches names with no cue; it sees only word shape, endings and neighbours, never "
-     "the word itself, so it cannot memorise names, and drug stems / medical suffixes veto it. Doctors, ASHA, "
-     "doses (1-0-1, 650 mg), eponyms, wards and C/O-complaint vs C/O-relative are protected."),
+    ("Detection", "Pass 1 types every column/key by header hints <i>and</i> value shape (Aadhaar, ABHA, phone, ID "
+     "pattern, place morphology -pur/-ganj/Khurd, S/o prefixes) and learns a runtime gazetteer. Pass 2 normalises like "
+     "the scorer (NFKC, homoglyphs, zero-width, Devanagari digits, base64), then finds names via labels (Name:, Naam:, "
+     "Devanagari), relation markers, triggers, honorifics and Hinglish kin words, log lines, phone proximity, the "
+     "gazetteer, a cross-script phonetic key, and last <b>our own trained classifier</b> (averaged perceptron, ~600 "
+     "weights) for names with no cue; it sees only shape, endings and neighbours, never the word, and drug stems veto "
+     "it. Doctors, ASHA, doses (1-0-1), eponyms and C/O-complaint vs C/O-relative are protected."),
     ("Linking", "Union-find over strong keys (hospital IDs, phone, Aadhaar, ABHA) with merge blockers: "
      "different gender, stated ages more than 3 years apart, or names with no shared sound-alike token never "
      "merge. Records listing many patients (indexes) never bridge two people. Name-only records join only if "
@@ -90,8 +87,13 @@ USP = [
     "attacker written independently by QA, run on every change. They found that per-record age bands let pooled "
     "records reveal exact ages, and drove the one-band-per-patient and local k-anonymity design: 0 / 48 patients "
     "unique on what we release.",
-    "<b>Precision-first, cross-script linking:</b> Mohammad in Devanagari = Mohammad = Mohd via a phonetic key, with merge "
-    "blockers that kept both same-name homonym pairs apart (0 wrong merges).",
+    "<b>Precision-first, cross-script linking</b> (Devanagari Mohammad = Mohammad = Mohd) with merge blockers and a "
+    "blocking index: both homonym pairs kept apart, 0 wrong merges; 6,000 name-only notes link in 6 s instead of 39 s.",
+    "<b>Built for failure, audited before release:</b> a resource governor (memory and time budgets) and crash "
+    "isolation mean a huge file or a bug costs utility, never the release; a <b>release gate</b> re-checks every "
+    "output and path against all identifiers learned from the input (0 repairs needed on practice data; alone it "
+    "cuts leaks 35% with all name rules off); a counts-only report card goes to logs/. Torture test (empty, 60 MB "
+    "bulk, PII folder names, symlinks, disguised binaries): exit 0, contract OK, 0 leaks.",
 ]
 
 RESULTS = [
@@ -105,7 +107,7 @@ RESULTS = [
      "people, median 21. Dates are shifted per patient, so a known admission week does not narrow it"),
     ("Attackers, raw → ours (lower is better)", "ours: A3 record linkage 0.67 → 0.031, A4 re-identified 93.8% → 6.2%, "
      "A5 targeted 100% → 51.2%; QA's independent attacker: 97.9% → 8.3% re-identified, A5 → 47.6%"),
-    ("Run time / peak memory", "200 files: 1.9 s / 35 MB. 8,000 synthetic files: 19.7 s / 282 MB (limits 15 min / "
+    ("Run time / peak memory", "200 files: 2.0 s / 36 MB. 8,000 synthetic files: 24 s / 267 MB (limits 15 min / "
      "4 GB). Byte-identical repeats; identical on Python 3.9-3.13; offline"),
     ("On data we did not tune on", "no registration tables 0 / 2263 leaked; free text only 0 / 569; headers renamed "
      "0 / 3230; new ID/phone/date/label formats 0 / 3230 (linking 1.00 / 1.00); QA mutation harness, 8 seeds: 0 / 3230 "
@@ -134,13 +136,10 @@ SECURITY = (
     "only; an exception hook prints only the error type; report reasons are fixed codes.")
 
 TESTING = (
-    "<b>How we tested.</b> 34 meaning-trap cases + header and number round-trips, five held-out variants, 40 Hinglish "
-    "notes, a format-mutation harness that rewrites the answer key too (8 seeds, 0 leaks each), our attacker, the "
-    "kit validators, and independent QA (Aditya): a clean-machine run that caught a Python 3.9 incompatibility "
-    "silently quarantining every file, village leaks under a renamed header and damaged relation markers; a "
-    "side-channel scan of stdout, stderr, TMPDIR, HOME, report, records and file names (0 hits; the same scanner "
-    "finds all 4 canaries and 1,278 identifiers in the raw input); a scaling test that exposed quadratic name "
-    "matching (now linear); and a second, independent attacker that confirms our A5 conclusion.")
+    "<b>How we tested.</b> 34 trap cases, five held-out variants, 40 Hinglish notes, a mutation harness that rewrites "
+    "the answer key too (8 seeds, 0 leaks each), a torture test, crash injection, two attackers, the kit validators, and "
+    "independent QA (Aditya), which caught a Python 3.9 bug quarantining every file, a linker crash on 1,000+ people, "
+    "quadratic matching, and ran a side-channel scan of stdout, stderr, TMPDIR, HOME and the report (0 hits).")
 
 LIMITS = [
     "<b>Targeted attack (A5) about 51%:</b> driven by exact length of stay + a consistent profile on common "
@@ -149,7 +148,8 @@ LIMITS = [
     "Small releases are coarsened heavily (above). Names with no cue: 88%, not 100% (sentence-initial words such "
     "as \"Met\" are sometimes taken for names); Devanagari names without cues rely on the learned gazetteer.",
     "The phonetic key is coarse; rare transliterations may not link on unseen data. XML, PDF and images are "
-    "quarantined (encrypted), not cleaned. Our attackers follow the published spec; official numbers will differ.",
+    "quarantined (encrypted), not cleaned; so is a single file above ~43 MB (memory governor; streaming is next). "
+    "Our attackers follow the published spec; official numbers will differ.",
 ]
 
 

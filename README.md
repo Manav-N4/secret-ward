@@ -6,7 +6,7 @@
 
 *An offline, CPU-only, LLM-free privacy firewall for English, हिंदी and Hinglish hospital records.*
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [Results](#results-at-a-glance) · [Privacy vs utility](#privacy-vs-utility-measured) · [Security](#security-design) · [Limitations](#known-limitations) · [Project brief (PDF)](docs/brief.pdf)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Built for real-world failure](#built-for-real-world-failure) · [Results](#results-at-a-glance) · [Privacy vs utility](#privacy-vs-utility-measured) · [Security](#security-design) · [Limitations](#known-limitations) · [Project brief (PDF)](docs/brief.pdf)
 
 Team: Manav · Aditya · Nishk · Kavita
 
@@ -37,7 +37,9 @@ Practice data (`check_dev.py`), plus data we did **not** tune on:
 | 🛡️ Patients unique on what we release | **0 / 48** (raw data: 46 / 48) |
 | 🕵️ Patients re-identified by attack | **98% → 6-8%** (two independent attackers) |
 | 🧪 Unseen data | renamed headers, new formats, no registration tables, free text only, 8 random format mutations: **0 leaks on all of them** |
-| ⚡ Speed / memory | 200 files: **1.9 s, 35 MB**. 8,000 files: **19.7 s, 282 MB** (limits: 15 min, 4 GB) |
+| 💣 Hostile inputs (`scripts/torture.py`) | empty, zero-byte, 60 MB bulk export, 2 MB single line, binary as `.csv`, UTF-16 without BOM, PII in **folder** names, symlink to `/etc/passwd`, 3,000 columns, unknown extensions: **exit 0, CONTRACT OK, 0 planted identifiers anywhere** |
+| 🔒 Release gate | an independent re-check of every output file: **0 repairs needed** on practice data; with every name rule switched off it alone cuts leaks by 35% |
+| ⚡ Speed / memory | 200 files: **2.0 s, 36 MB**. 8,000 files: **24 s, 267 MB** (limits: 15 min, 4 GB) |
 | 🔁 Reproducible | byte-identical output on repeat runs and across Python 3.9-3.13; a new secret changes every ID and date |
 
 ## Quick start
@@ -82,8 +84,31 @@ Drug stems, medical suffixes and clinical words can never be tagged. No LLM, no 
 no pretrained model of any size. Retrain: `python3 scripts/train_ner.py --kit <kit>`. Switch off:
 `ner_enabled: 0` in `config/policy.yaml`.
 
+Every run also writes **`logs/privacy_report.md`**, a plain-language report card for the data
+officer: what was removed by type, which files were quarantined and why, how many patients are
+still alone in the release, whether any safety net fired. Counts and fixed codes only, never a value.
+
 All rules (labels, relation markers, honorifics, header hints, safe words, medical stems) are plain
 text files in `config/rules/`, so a Hindi reader can extend them without touching code.
+
+## Built for real-world failure
+
+What an organiser (or a real hospital) can throw at it, and what happens. Every row is checked
+by `scripts/torture.py` (step 6b of `check_all.sh`).
+
+| Scenario | Behaviour |
+|---|---|
+| empty folder, zero-byte / whitespace-only / BOM-only files, `null`, `{}` | exit 0, honest report; empty files quarantined, empty JSON kept valid |
+| a folder of only PDFs or images | everything quarantined (encrypted), exit 0, honest report. Exit 3 is reserved for failures inside our own code |
+| **a huge bulk export** | a **resource governor** estimates each file's memory cost before parsing (measured: about 57× the file size). Files up to ~43 MB are cleaned (30 MB: 80 s, 1.7 GB); a file that would push the run past the memory budget is quarantined, encrypted, so the run can never be killed at 4 GB with no output |
+| running out of time | a time budget (12 of the 15 minutes): files not yet written are quarantined, and the report is still written |
+| **a crash inside linking or k-anonymity** | crash isolation: linking falls back to "no links" (records still cleaned), k-anonymity falls back to coarsening everyone. A bug costs utility, never the release |
+| 6,000+ name-only notes | linking uses a **blocking index** (only clusters that share the name's tokens are compared): 39 s → 6 s on 6,000 notes, identical output; the old scan was quadratic |
+| PII in a **folder** name (`Ramesh Yadav 9876543210/note.txt`) | every path part is cleaned, not just the file name |
+| a symlink pointing outside the input | refused: never read into the release, never kept |
+| UTF-16 without BOM, cp1252, stray bytes | detected and decoded; unreadable binary is quarantined |
+| unknown or missing extension, `.jsonl`, `;` or `\|` CSV | content sniffing: valid JSON is cleaned as JSON, readable text as text, delimiters detected. HTML, XML, Office files, archives and images are never parsed (markup can hide data in attributes) |
+| something slipped past every layer | the **release gate** re-checks each file and its path against every identifier learned from the input, and repairs it before writing |
 
 ## What makes it different
 
@@ -95,7 +120,9 @@ text files in `config/rules/`, so a Hindi reader can extend them without touchin
    drug names. On 40 Hinglish nursing notes from a teammate: 105 / 105 name parts removed.
 3. **Cross-script, precision-first linking.** One patient keeps one ID across hospitals and scripts;
    the merge blockers kept both same-name homonym pairs apart (0 wrong merges).
-4. **Privacy proven by attack.** Our re-implementation of the published attacks (A3-A5) and a second
+4. **It audits itself before release.** The release gate is a second, independent lock with no
+   answer key, and the report card tells a human exactly what happened, in counts only.
+5. **Privacy proven by attack.** Our re-implementation of the published attacks (A3-A5) and a second
    attacker written independently by our QA lead agree. Every privacy setting below was chosen by
    measuring it.
 
@@ -155,6 +182,8 @@ plus a consistent profile, and the rules require stay lengths to stay exact. Det
 | `scripts/attack.py`, `qa/attack_sim.py` | two independent attackers, ours vs raw | A3 0.67 → 0.03 · A4 94% → 6% · A5 100% → 51% |
 | `scripts/reid_risk.py` | uniqueness against the attacker's register | 0 / 48 unique |
 | `scripts/vault_check.py` | encrypted quarantine | 7 / 7 |
+| `scripts/torture.py` | 36 hostile files incl. a bulk export, PII folder names, a symlink out of the input | exit 0 · CONTRACT OK · 0 planted identifiers |
+| crash injection (linking and k-anonymity forced to fail) | crash isolation | every file still written, 0 leaks |
 
 Most of these tools found a real bug during the event before reaching their current number (for
 example: Python 3.9 silently quarantining every file, disease durations read as ages, an Aadhaar
@@ -173,6 +202,7 @@ stored as a JSON number). Each bug and fix is in the pull-request history.
 | `src/secretward/link.py` | patient clustering with merge blockers |
 | `src/secretward/privacy.py`, `dates.py` | HMAC IDs, date shifts, age bands, k-anonymity |
 | `src/secretward/vault.py` | encrypted quarantine |
+| `src/secretward/gate.py` | release gate: re-checks every output before it is written |
 | `config/policy.yaml`, `config/rules/` | every setting and rule list, as editable data |
 | `tests/`, `scripts/`, `qa/` | tests and measurement tools (dev only; they read the kit's practice answer key) |
 | `docs/brief.pdf`, `docs/DESIGN.md` | the 2-page Project Brief and detailed design notes |
@@ -187,7 +217,11 @@ stored as a JSON number). Each bug and fix is in the pull-request history.
 * **Names with no cue:** 88%, not 100%. Sentence-initial words such as "Met" are sometimes taken
   for names. Devanagari names without any cue rely on the learned gazetteer only.
 * The cross-script phonetic key is coarse; rare transliterations may not link on unseen data.
-* XML, PDF and images are quarantined (encrypted), not cleaned.
+* XML, PDF and images are quarantined (encrypted), not cleaned. A single file above ~43 MB is
+  quarantined by the resource governor rather than cleaned (streaming it is our next step); if that
+  file was the only source of some names, notes that mention them lose that help.
+* The report card's "alone in the release" count is stricter than our register-based estimate
+  (3 versus 0 on practice data), because at run time there is no register to compare against.
 * Our attackers follow the published attack spec; the official arena's numbers will differ.
 
 ---

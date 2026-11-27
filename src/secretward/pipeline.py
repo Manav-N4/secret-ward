@@ -12,11 +12,13 @@ import io
 import json
 import re
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import dates, vault
+from .gate import ReleaseGate
 from .detect import AGE_PATTERNS, ID_TOKEN, sanitize_header, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
 from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
@@ -27,7 +29,25 @@ from .rules import POLICY
 from .conditions import ICD, RareConditions, mentions_in_text
 
 TEXT_EXT = {".txt", ".md", ".log", ".text"}
+# never parsed, whatever their content looks like: markup can hide data in attributes and
+# comments, and documents / images / archives need tools we do not ship -> quarantine (encrypted)
+NEVER_PARSE = {".xml", ".html", ".htm", ".xhtml", ".svg", ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
+               ".tif", ".tiff", ".webp", ".heic", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt",
+               ".ods", ".rtf", ".zip", ".gz", ".tgz", ".tar", ".7z", ".rar", ".bz2", ".xz", ".exe", ".dll",
+               ".bin", ".dcm", ".dicom", ".mp3", ".mp4", ".wav", ".avi", ".mov", ".db", ".sqlite"}
 MAX_DEPTH = 200
+
+# Resource governor (limits: 4 GB for the whole process tree, 15 min). Measured peak cost is
+# about 57x the file size for tables and JSON (a 30 MB bulk CSV peaked at 1.7 GB) and ~10x for
+# text. A file that would push the run past the memory budget is quarantined (encrypted), never
+# parsed, so the run always finishes and writes its report instead of being killed.
+MEMORY_BUDGET_MB = float(POLICY.get("memory_budget_mb", 2600))
+TIME_BUDGET_S = float(POLICY.get("time_budget_seconds", 720))
+
+
+def estimated_mb(raw: bytes, ext: str) -> float:
+    mb = len(raw) / 1e6
+    return mb * 10 if ext in TEXT_EXT else mb * 60
 UUIDISH = re.compile(r"^(?:urn:uuid:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^urn:uuid:", re.I)
 PHONE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])(?:\+?91[\s-]?)?0?[6-9]\d{4}[\s-]?\d{5}(?![0-9])")
 AADHAAR_IN_TEXT = re.compile(r"(?<![0-9])\d{4}[\s-]?\d{4}[\s-]?\d{4}(?![0-9])")
@@ -73,6 +93,12 @@ def decode(raw: bytes) -> str:
         return raw[3:].decode("utf-8")
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
         return raw.decode("utf-16")
+    if len(raw) >= 8:                              # UTF-16 without a BOM: every other byte is zero
+        odd, even = raw[1::2], raw[0::2]
+        if odd.count(0) > 0.3 * len(odd) and even.count(0) < 0.05 * len(even):
+            return raw.decode("utf-16-le")
+        if even.count(0) > 0.3 * len(even) and odd.count(0) < 0.05 * len(odd):
+            return raw.decode("utf-16-be")
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -98,21 +124,36 @@ def depth(o, d=0) -> int:
     return best
 
 
-def read_doc(path: Path, rel: str) -> Doc:
-    raw = path.read_bytes()
+def read_doc(path: Path, rel: str, refuse: str | None = None, raw: bytes | None = None) -> Doc:
+    raw = path.read_bytes() if raw is None else raw
     sha = hashlib.sha256(raw).hexdigest()
     ext = path.suffix.lower()
     doc = Doc(rel=rel, sha=sha, kind="")
     try:
+        if refuse:
+            raise Quarantine(refuse)
         if not raw.strip():
             raise Quarantine("empty_file")
-        if ext not in (".csv", ".tsv", ".json") and ext not in TEXT_EXT:
-            raise Quarantine("unsupported_format")
+        if ext in NEVER_PARSE or (ext not in (".csv", ".tsv", ".json") and ext not in TEXT_EXT
+                                  and raw.lstrip()[:1] == b"<"):
+            raise Quarantine("unsupported_format")   # markup, documents, images, archives
         text = decode(raw)
+        if ext not in (".csv", ".tsv", ".json") and ext not in TEXT_EXT:
+            # unknown or missing extension: decide by CONTENT (decode() already refused binary)
+            try:
+                data = json.loads(text)
+                if isinstance(data, (dict, list)) and depth(data) <= MAX_DEPTH:
+                    doc.kind, doc.data = "json", data
+                    return doc
+            except (json.JSONDecodeError, RecursionError):
+                pass
+            doc.kind, doc.data = "text", text
+            return doc
         if ext in (".csv", ".tsv"):
             if text.lstrip()[:1] in ("{", "["):
                 raise Quarantine("format_mismatch")
-            delim = "\t" if ext == ".tsv" or (text.count("\t") > text.count(",")) else ","
+            head = text.lstrip("\ufeff").split("\n", 1)[0]
+            delim = "\t" if ext == ".tsv" else max((",", "\t", ";", "|"), key=lambda c: (head.count(c), c == ","))
             rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=delim))
             if not rows or not any(rows[0]):
                 raise Quarantine("empty_table")
@@ -197,17 +238,40 @@ def last_key(p: tuple) -> str:
 class Pipeline:
     def __init__(self, inp: Path, out: Path) -> None:
         self.inp, self.out = inp, out
+        self.t0 = time.monotonic()
         self.docs: list[Doc] = []
         self.gaz = Gazetteer()
         self.counts = Counter()
         self.cluster_bands: dict = {}
         self.vaulted = 0
+        self.release_stats: dict = {}
+        self.hidden_loc: set = set()
+
+    def over_time(self) -> bool:
+        return time.monotonic() - self.t0 > TIME_BUDGET_S
 
     # pass 0 + 1 ----------------------------------------------------------
     def load(self) -> None:
+        root = self.inp.resolve()
+        used_mb = 0.0
         for path in sorted(p for p in self.inp.rglob("*") if p.is_file()):
             rel = path.relative_to(self.inp).as_posix()
-            self.docs.append(read_doc(path, rel))
+            refuse = None
+            if path.is_symlink() and root not in path.resolve().parents:
+                refuse = "symlink_outside_input"      # never read data from outside the input tree
+                self.docs.append(read_doc(path, rel, refuse))   # hashed for the report, never parsed or kept
+                continue
+            raw = path.read_bytes()
+            cost = estimated_mb(raw, path.suffix.lower())
+            if used_mb + cost > MEMORY_BUDGET_MB:
+                refuse = "too_large_for_memory_budget"
+            elif self.over_time():
+                refuse = "time_budget_exceeded"
+            else:
+                used_mb += cost
+            self.docs.append(read_doc(path, rel, refuse, raw=raw))
+            if refuse:
+                self.counts["GOVERNOR_" + refuse.upper()] += 1
         for d in self.docs:
             if d.kind == "csv":
                 self._harvest_csv(d)
@@ -364,7 +428,12 @@ class Pipeline:
                 d.units.append(u)
         self._drop_multi_patient_bridges()
         all_units = [(u.uid, u.ev) for d in self.docs for u in d.units]
-        clusters = Linker(all_units).run()
+        try:
+            clusters = Linker(all_units).run()
+        except Exception as exc:  # noqa: BLE001 - one bug in linking must never cost the whole release
+            clusters = {}                          # every record gets "patient": null; cleaning still runs
+            self.counts["FALLBACK_NO_LINKING"] += 1
+            sys.stderr.write(f"warning: linking failed ({type(exc).__name__}); records left unlinked\n")
         ages: dict[str, list[int]] = {}
         for d in self.docs:
             for u in d.units:
@@ -373,8 +442,18 @@ class Pipeline:
                 if u.cluster:
                     ages.setdefault(u.cluster, []).extend(u.ev.ages)
         self.cluster_bands = {k: cluster_band(v) for k, v in ages.items()}
-        self._k_anonymity()
-        self._rare_conditions()
+        try:
+            self._k_anonymity()
+        except Exception as exc:  # noqa: BLE001 - fail towards MORE privacy: coarsen everyone
+            self.cluster_bands = {k: widen(b) for k, b in self.cluster_bands.items()}
+            self.hidden_loc = set(self.cluster_bands)
+            self.counts["FALLBACK_COARSEN_ALL"] += 1
+            sys.stderr.write(f"warning: k-anonymity failed ({type(exc).__name__}); coarsened every patient\n")
+        try:
+            self._rare_conditions()
+        except Exception as exc:  # noqa: BLE001
+            self.counts["FALLBACK_RARE_OFF"] += 1
+            sys.stderr.write(f"warning: rare-condition step failed ({type(exc).__name__}); skipped\n")
 
     def _rare_conditions(self) -> None:
         """Count, per patient, every diagnosis/procedure mention; the rare ones get their
@@ -493,6 +572,20 @@ class Pipeline:
             if groups[key(c, self.cluster_bands.get(c))] < int(POLICY.get("hide_location_below", 2)):
                 self.hidden_loc.add(c)
                 self.counts["K_ANON_LOCATION_HIDDEN"] += 1
+
+        # what the release finally shows per patient: (gender, band, district or hidden)
+        def shown(c):
+            g, dist = info[c]
+            return (tuple(sorted(g)), self.cluster_bands.get(c), () if c in self.hidden_loc else tuple(sorted(dist)))
+        final = Counter(shown(c) for c in info)
+        sizes = [final[shown(c)] for c in info]
+        self.release_stats = {"patients": len(info), "k_target": k,
+                              "smallest_group": min(sizes) if sizes else 0,
+                              "patients_below_k": sum(1 for x in sizes if x < k),
+                              "patients_alone": sum(1 for x in sizes if x == 1),
+                              "widened": sum(1 for c in info if self.cluster_bands.get(c) and
+                                             self.cluster_bands[c][1] - self.cluster_bands[c][0] >= 19),
+                              "location_hidden": len(self.hidden_loc)}
 
     @staticmethod
     def _json_names(pairs) -> list[str]:
@@ -705,28 +798,52 @@ class Pipeline:
         self.counts.update(ctx.counts)
         return out
 
-    def out_name(self, d: Doc) -> str:
-        p = PurePosixPath(d.rel)
+    def _clean_part(self, part: str, tag_src: str) -> str:
         ctx = Ctx(gaz=self.gaz)
-        stem = sanitize(p.stem, ctx)
-        if stem == normalize(p.stem):
-            return d.rel
-        safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem.replace("[", "").replace("]", "")).strip("_")
-        return str(p.with_name(f"{safe}_{short_tag(d.rel)}{p.suffix}"))
+        out = sanitize(part, ctx)
+        if out == normalize(part):
+            return part
+        safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", out.replace("[", "").replace("]", "")).strip("_")
+        return f"{safe}_{short_tag(tag_src)}"
+
+    def out_name(self, d: Doc) -> str:
+        """Every path part is checked, not just the file name: a FOLDER called
+        "Ramesh Yadav 9876543210/" leaks as much as a file of that name. A renamed folder gets
+        the same new name for every file inside it (the tag depends on the folder's path)."""
+        p = PurePosixPath(d.rel)
+        parts = []
+        for i, part in enumerate(p.parts[:-1]):
+            parts.append(self._clean_part(part, "/".join(p.parts[:i + 1])))
+        stem = self._clean_part(p.stem, d.rel)
+        parts.append(stem + p.suffix)
+        return "/".join(parts)
 
     def write(self) -> list[dict]:
         san = self.out / "sanitized"
         files = []
+        gate = ReleaseGate((k for d in self.docs for u in d.units for k in u.ev.keys), self.gaz.latin_full)
         for d in self.docs:
             entry = {"input_sha256": d.sha}
+            if d.kind != "quarantine" and self.over_time():
+                d.kind, d.data = "quarantine", "time_budget_exceeded"   # report still gets written in time
+                self.counts["GOVERNOR_TIME_BUDGET_EXCEEDED"] += 1
             if d.kind == "quarantine":
                 entry.update(output=None, status="quarantined", reason=d.data)
-                self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)   # encrypted or not at all
+                if d.data != "symlink_outside_input":        # data from outside the input is never kept
+                    self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)   # encrypted or not at all
                 files.append(entry)
                 continue
             try:
                 result = {"csv": self.sanitize_csv, "json": self.sanitize_json, "text": self.sanitize_text}[d.kind](d)
                 d.out_rel = self.out_name(d)
+                # release gate: last, independent check of content AND path against everything learned
+                result = gate.check_file(d.kind, result)
+                parts = d.out_rel.split("/")
+                for i, part in enumerate(parts):
+                    if gate.clean(part) != part:
+                        stem, dot, ext = part.rpartition(".") if i == len(parts) - 1 and "." in part else (part, "", "")
+                        parts[i] = f"FILE_{short_tag('/'.join(parts[:i + 1]))}" + (dot + ext if dot else "")
+                d.out_rel = "/".join(parts)
                 dest = san / d.out_rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 # open(..., newline="") works on every Python 3; Path.write_text(newline=)
@@ -739,4 +856,5 @@ class Pipeline:
                 entry.update(output=None, status="quarantined", reason="processing_error_" + type(exc).__name__)
                 self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)
             files.append(entry)
+        self.counts["RELEASE_GATE_REPAIRS"] += gate.repaired
         return files
