@@ -37,116 +37,84 @@ WHITE = colors.white
 
 W = A4[0] - 32 * mm          # text width
 
-S_BODY = ParagraphStyle("body", fontName="Body", fontSize=10.5, leading=13.4, textColor=INK)
-S_SMALL = ParagraphStyle("small", parent=S_BODY, fontSize=10, leading=12.4)
-S_CELL = ParagraphStyle("cell", parent=S_BODY, fontSize=10, leading=12.3)
+S_BODY = ParagraphStyle("body", fontName="Body", fontSize=11.5, leading=15.5, textColor=INK)
+S_SMALL = ParagraphStyle("small", parent=S_BODY, fontSize=11, leading=14.5)
+S_CELL = ParagraphStyle("cell", parent=S_BODY, fontSize=11, leading=14)
 S_CELLB = ParagraphStyle("cellb", parent=S_CELL, fontName="Body-Bold", textColor=GREEN_D)
-S_H = ParagraphStyle("h", parent=S_BODY, fontName="Body-Bold", fontSize=13, leading=15.5, textColor=GREEN,
-                     spaceBefore=6, spaceAfter=3)
-S_CARD_T = ParagraphStyle("cardt", parent=S_BODY, fontName="Body-Bold", fontSize=10.5, leading=13, textColor=GREEN_D)
+S_H = ParagraphStyle("h", parent=S_BODY, fontName="Body-Bold", fontSize=14, leading=17, textColor=GREEN,
+                     spaceBefore=12, spaceAfter=5)
+S_CARD_T = ParagraphStyle("cardt", parent=S_BODY, fontName="Body-Bold", fontSize=12, leading=15, textColor=GREEN_D)
 S_TITLE = ParagraphStyle("title", parent=S_BODY, fontName="Body-Bold", fontSize=22, leading=25, textColor=WHITE)
 S_PITCH = ParagraphStyle("pitch", parent=S_BODY, fontSize=12, leading=15, textColor=WHITE)
 S_META = ParagraphStyle("meta", parent=S_BODY, fontSize=10, leading=12.5, textColor=colors.HexColor("#CFE6DC"))
 S_KPI_N = ParagraphStyle("kpin", parent=S_BODY, fontName="Body-Bold", fontSize=17, leading=20, textColor=GREEN_D,
                          alignment=1)
 S_KPI_L = ParagraphStyle("kpil", parent=S_BODY, fontSize=10, leading=11.6, textColor=MUTED, alignment=1)
-S_BUL = ParagraphStyle("bul", parent=S_SMALL, leftIndent=10, bulletIndent=0, spaceAfter=2)
+S_BUL = ParagraphStyle("bul", parent=S_SMALL, leftIndent=11, bulletIndent=0, spaceAfter=5)
 
 # ----------------------------------------------------------------------------- TEXT
-# Structure and labels follow the kit's brief/PROJECT_BRIEF_TEMPLATE.md exactly.
+# Section order follows the kit's brief/PROJECT_BRIEF_TEMPLATE.md; kept short on purpose.
 TEAM = "secret-ward"
-PITCH = ("an offline privacy firewall that finds people no dictionary knows, in English, Hindi and Hinglish, "
-         "and proves its privacy by attacking itself")
+PITCH = "An offline privacy firewall for Indian hospital records, in English, Hindi and Hinglish."
 META = ("<b>Track 3 · Secret Wards</b> &nbsp;·&nbsp; <b>Members:</b> Manav, Aditya, Nishk, Kavita "
         "&nbsp;·&nbsp; <b>Repo:</b> github.com/Manav-N4/secret-ward")
 
+KPIS = [
+    ("0 / 3230", "personal data<br/>pieces leaked"),
+    ("99.4%", "medical values<br/>kept exact"),
+    ("1.00", "patient linking<br/>precision and recall"),
+    ("0 / 48", "patients unique<br/>after release"),
+    ("98% → 6%", "patients re-identified<br/>by attack"),
+]
+
 ONE_PARA = (
-    "secret-ward turns a messy multi-hospital dump (CSV, TSV, JSON, FHIR, notes, in three scripts) into a research "
-    "release: every identifier removed, every clinical value exact, one keyed pseudonym per patient across files and "
-    "hospitals. <b>The single idea that makes it better than a plain PII tool: nothing is memorised.</b> Column "
-    "meanings come from the values, names and IDs are learned from each input at run time, and a small model we "
-    "trained ourselves catches names with no cue at all, so unseen headers, new patients and planted canaries are "
-    "still caught. Offline, CPU-only, no LLM, and it re-checks its own output before release.")
+    "Hospitals want to share patient records for research without exposing anyone. secret-ward removes every "
+    "personal detail, keeps every medical value exact, and gives each patient one stable fake ID across all files. "
+    "<b>Our key idea: nothing is memorised.</b> It learns what each column means and who the patients are from the "
+    "data itself, so it still works on files, headers and names it has never seen.")
 
 HOW = [
-    ("Ingestion", "UTF-8, UTF-8 BOM, UTF-16 (with or without BOM), cp1252; CSV, TSV, JSON, FHIR R4, text; unknown "
-     "extensions sniffed by content. Empty, corrupt, truncated, too-deep, mislabelled, PDF, image and XML files are "
-     "<b>quarantined</b> with a fixed reason code, kept only encrypted, never copied. A memory and time governor and "
-     "crash isolation mean the report is always written."),
-    ("Detection", "<b>Rules:</b> columns typed by header <i>and</i> value shape (Aadhaar, ABHA, phone, ID pattern, "
-     "place endings -pur/-ganj); text normalised like the scorer (NFKC, homoglyphs, zero-width, base64). "
-     "<b>English, Hindi, Hinglish:</b> labels (Name:, Naam:, <font name='Deva'>नाम</font>:), relation markers "
-     "(S/o, W/o), honorifics and kin words (ji, sahab, Chachu). <b>Gazetteer</b> learned per input; "
-     "<b>transliteration</b> to a cross-script phonetic key (<font name='Deva'>रमेश</font> = Ramesh); "
-     "<b>classical ML:</b> our own averaged perceptron for names with no cue. <b>Meaning traps:</b> doctors, doses "
-     "(1-0-1), eponyms and “C/O fever” vs “C/O Ramesh” are protected."),
-    ("Linkage &amp;<br/>pseudonyms", "Union-find on strong keys (hospital ID, phone, Aadhaar, ABHA). <b>Blocking:</b> "
-     "name-only records are compared only with clusters sharing their name tokens. Phonetic, cross-script name keys "
-     "(Mohammad = Mohd). <b>No over-merging:</b> different gender, ages over 3 years apart or no sound-alike name "
-     "never merge; records listing many patients never bridge two. <b>Keyed HMAC IDs:</b> PSN- + "
-     "HMAC-SHA256(secret, patient), written inside every record."),
-    ("Privacy layer", "<b>Date shifting:</b> one secret, non-zero shift per patient (±180 days), so intervals and "
-     "stay lengths stay exact. <b>Age bands:</b> one truthful 10-year band per patient. <b>Location:</b> house and "
-     "village removed; district and 3-digit PIN kept. <b>Rare-value suppression:</b> local k-anonymity (k = 3): "
-     "small groups get a 20-year band, anyone still alone loses district and PIN."),
-    ("Security", "<b>Encryption at rest:</b> quarantined files kept only as AES-256-GCM ciphertext, named by hash; "
-     "everything else is processed in memory. <b>Keys:</b> RAKSHA_SECRET only in the environment, never written; "
-     "per-file keys via HKDF. <b>PII-free logs:</b> counts and fixed codes only (QA side-channel scan: 0 hits). "
-     "<b>Release gate:</b> every output file and path is re-checked against all identifiers learned from the input."),
+    ("Ingestion", "Reads CSV, TSV, JSON, FHIR and text in four encodings. Files it cannot clean safely are locked "
+     "away encrypted, never copied."),
+    ("Detection", "Rules, a learned name list, a Hindi–English phonetic key (<font name='Deva'>रमेश</font> = Ramesh) "
+     "and <b>a small model we trained ourselves</b> for names with no label. Doctors, doses and diseases are kept."),
+    ("Linkage", "Joins records by hospital ID, phone or Aadhaar. Safety rules stop two different people from "
+     "ever being merged. Fake IDs are keyed HMACs."),
+    ("Privacy layer", "Dates shifted per patient (stay lengths stay exact), ages in 10-year bands, address reduced "
+     "to district. Patients who would still stand out get wider bands."),
+    ("Security", "Secret key never written anywhere; logs hold counts only; every output is re-checked before "
+     "release."),
 ]
 
 USP = [
-    ("Works on data it has never seen",
-     "Nothing memorised; our classifier never sees the word. Renamed headers, new formats, 8 mutations: 0 leaks. "
-     "Cue-less names: 0% → 88%."),
+    ("Works on unseen data",
+     "Renamed columns, new formats and 8 shuffled versions of the data: 0 leaks every time."),
     ("Privacy proven by attack",
-     "Two independently built attackers agree: re-identification 98% → 6–8%. Each setting kept only if the "
-     "attack justified its cost."),
-    ("Built for failure, self-audited",
-     "Resource governor, crash isolation, encrypted quarantine, a release gate. Torture test (60 MB bulk, PII "
-     "folders, symlinks): 0 leaks."),
+     "Two attackers, built separately, try to re-identify patients: success falls from 98% to 6%."),
+    ("Never fails silently",
+     "Empty files, huge files, crashes: it always finishes, writes an honest report, and leaks nothing."),
 ]
 
 RESULTS = [
-    ("personal data leaked<br/>(overall / Hindi / Hinglish)",
-     "<b>0% / 0% / 0%</b>: 0 of 3,230 pieces; canaries 0 / 4; 0% in file names, keys, headers, metadata, base64"),
-    ("medical values kept", "<b>99.4%</b> (4,826 / 4,855): all 29 lost are district names hidden on purpose; "
-     "15,286 / 15,286 date intervals exact"),
-    ("linking precision / recall / F0.5", "<b>1.00 / 1.00 / 1.00</b>; 0 wrong merges; both homonym pairs kept apart"),
-    ("re-identification risk<br/>(our estimate)", "<b>0%</b> of patients unique on gender + age band + district "
-     "against the attacker's 240-person register (0 / 48; raw data 96%, kit reference setting 42%). Admission week "
-     "adds nothing: dates are shifted per patient. Attacks, raw → ours: A4 93.8% → 6.2%, A5 100% → 51%"),
-    ("run time / peak memory", "<b>2.0 s / 36 MB</b> for 200 files; 24 s / 267 MB for 8,000 files "
-     "(limits 15 min / 4 GB); byte-identical repeats"),
-    ("on data you did not tune on", "no registration tables 0 / 2,263 leaked; free text only 0 / 569; renamed "
-     "headers and new formats 0 / 3,230; 8 mutation seeds 0 each; 40 Hinglish notes 105 / 105 name parts; "
-     "torture test 0"),
-]
-
-LADDER = [
-    ("How each setting was chosen", "Unique", "A4", "A5", "Medical", "Utility*"),
-    ("10-year age bands only", "27%", "27%", "57%", "100%", "0.65"),
-    ("+ 20-year band for groups smaller than 3", "15%", "12.5%", "57%", "100%", "0.62"),
-    ("<b>+ hide district and PIN if still alone (shipped)</b>", "<b>0%</b>", "<b>6.2%</b>", "<b>51%</b>",
-     "<b>99.4%</b>", "<b>0.41</b>"),
+    ("personal data leaked<br/>(overall / Hindi / Hinglish)", "<b>0% / 0% / 0%</b> (0 of 3,230 pieces)"),
+    ("medical values kept", "<b>99.4%</b>: the only values changed are districts we hide on purpose"),
+    ("linking precision / recall / F0.5", "<b>1.00 / 1.00 / 1.00</b>, no two people ever merged"),
+    ("re-identification risk", "<b>0%</b> of patients unique on age band + district (raw data: 96%)"),
+    ("run time / peak memory", "<b>2 s / 36 MB</b> for 200 files; 24 s for 8,000 files"),
+    ("on data we did not tune on", "<b>0 leaks</b> on renamed headers, new formats, free text only and "
+     "40 Hinglish notes"),
 ]
 
 TRADEOFF = (
-    "<b>Why these settings.</b> Each step was kept only if the attack numbers justified its cost. <b>What we give "
-    "up:</b> in a 48-patient release most patients get a 20-year band and 29 lose their district (*generalisation "
-    "utility 0.65 → 0.41); bigger releases have bigger groups, so fewer are coarsened. Medicines, doses, labs and stay "
-    "lengths are never touched. <b>What we gain:</b> no patient is unique on what we release. <b>Tried and switched "
-    "off:</b> generalising rare diagnoses to ICD chapters cost 2–6% of medical values and did not lower A5.")
+    "<b>The trade-off:</b> to make sure no patient stands out, small groups get wider age bands and some lose "
+    "their district. We chose each setting by measuring how much it cut the attacker's success against how much "
+    "detail it cost. Medicines, doses, lab values and stay lengths are never touched.")
 
 LIMITS = [
-    "<b>Targeted attack (A5) about 51%.</b> Driven by the exact length of stay plus a consistent profile on common "
-    "conditions (TB, typhoid, diabetes), not by rare diseases. Stay lengths must stay exact, so we accept it; larger "
-    "releases dilute it.",
-    "<b>Small releases are coarsened heavily</b> (above). <b>Names with no cue: 88%, not 100%</b>: sentence-initial "
-    "words such as “Met” are sometimes taken for names.",
-    "XML, PDF and images, and any single file above ~43 MB (memory governor), are quarantined rather than cleaned. "
-    "<b>Next:</b> stream large files instead of quarantining them, and clean text inside PDFs.",
-    "Our attackers follow the published attack spec; the official arena's numbers will differ.",
+    "A targeted attacker who already knows a patient's visit still succeeds about half the time, because stay "
+    "lengths must stay exact.",
+    "Names with no clue around them are caught 88% of the time, not 100%.",
+    "PDFs, images and files over ~43 MB are locked away rather than cleaned. Next step: clean them too.",
 ]
 
 # ----------------------------------------------------------------------------- pieces
@@ -224,8 +192,8 @@ def diagram():
 def two_col(rows, left_w):
     t = Table([[Paragraph(k, S_CELLB), Paragraph(v, S_CELL)] for k, v in rows], colWidths=[left_w, W - left_w])
     style = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -2), 0.5, RULE),
-             ("TOPPADDING", (0, 0), (-1, -1), 2.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.6),
-             ("LEFTPADDING", (0, 0), (-1, -1), 4)]
+             ("TOPPADDING", (0, 0), (-1, -1), 6.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 6.5),
+             ("LEFTPADDING", (0, 0), (-1, -1), 6)]
     style += [("BACKGROUND", (0, i), (-1, i), ZEBRA) for i in range(0, len(rows), 2)]
     t.setStyle(TableStyle(style))
     return t
@@ -240,8 +208,8 @@ def cards(items, cols=2):
         widths += [cw] + ([6] if c < cols - 1 else [])
     grid = [[x for c, cell in enumerate(r) for x in ([cell] + ([""] if c < cols - 1 else []))] for r in rows]
     t = Table(grid, colWidths=widths)
-    style = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
-             ("BOTTOMPADDING", (0, 0), (-1, -1), 6), ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    style = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 8),
+             ("BOTTOMPADDING", (0, 0), (-1, -1), 10), ("LEFTPADDING", (0, 0), (-1, -1), 8),
              ("RIGHTPADDING", (0, 0), (-1, -1), 6)]
     for r in range(len(rows)):
         for c in range(cols):
@@ -267,6 +235,21 @@ def ladder():
     return t
 
 
+def try_it():
+    code = ParagraphStyle("code", parent=S_SMALL, fontName="Courier", fontSize=10, leading=14, textColor=INK)
+    rows = [[Paragraph("<b>Try it</b> &nbsp;(Python 3.9+, offline, CPU-only)", S_CARD_T)],
+            [Paragraph("python3 -m pip install -r requirements.txt", code)],
+            [Paragraph("RAKSHA_SECRET=&lt;secret&gt; python3 main.py --input &lt;in&gt; --output &lt;out&gt;", code)],
+            [Paragraph("Writes sanitized/, records.jsonl, report.json and a plain-language report card in "
+                       "logs/privacy_report.md.", S_SMALL)]]
+    t = Table(rows, colWidths=[W])
+    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), TINT), ("LINEBEFORE", (0, 0), (0, -1), 2.2, GREEN),
+                           ("LEFTPADDING", (0, 0), (-1, -1), 9), ("TOPPADDING", (0, 0), (-1, 0), 7),
+                           ("BOTTOMPADDING", (0, -1), (-1, -1), 8), ("TOPPADDING", (0, 1), (-1, -1), 1.5),
+                           ("BOTTOMPADDING", (0, 0), (-1, -2), 1.5)]))
+    return t
+
+
 def bullets(items):
     return [Paragraph(t, S_BUL, bulletText="•") for t in items]
 
@@ -274,22 +257,24 @@ def bullets(items):
 # ----------------------------------------------------------------------------- build
 def build(out: Path) -> None:
     doc = SimpleDocTemplate(str(out), pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
-                            topMargin=0, bottomMargin=11 * mm, title=f"{TEAM}: Project Brief",
+                            topMargin=0, bottomMargin=12 * mm, title=f"{TEAM}: Project Brief",
                             author="Manav, Aditya, Nishk, Kavita")
     s = [Table([[header()]], colWidths=[W + 32 * mm], style=[("LEFTPADDING", (0, 0), (-1, -1), 0),
                                                             ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                                                             ("TOPPADDING", (0, 0), (-1, -1), 0),
                                                             ("BOTTOMPADDING", (0, 0), (-1, -1), 0)],
                hAlign="CENTER"),
-         h("1", "In one paragraph"), Paragraph(ONE_PARA, S_BODY),
+         Spacer(1, 8), kpis(),
+         h("1", "The project in one paragraph"), Paragraph(ONE_PARA, S_BODY),
          h("2", "Architecture"), diagram(),
-         h("3", "How it works"), two_col(HOW, 25 * mm),
-         h("4", "USP"), cards(USP, cols=3),
+         h("3", "How it works"), two_col(HOW, 28 * mm),
          PageBreak(),
-         Spacer(1, 9 * mm),
-         h("5", "Privacy–utility trade-off (measured on the practice data)"), two_col(RESULTS, 42 * mm),
-         Spacer(1, 6), ladder(), Spacer(1, 4), Paragraph(TRADEOFF, S_SMALL),
-         KeepTogether([h("6", "Known limitations")] + bullets(LIMITS))]
+         Spacer(1, 10 * mm),
+         h("4", "What makes it different"), cards(USP, cols=3),
+         h("5", "Key outcomes: privacy vs utility (measured on the practice data)"), two_col(RESULTS, 52 * mm),
+         Spacer(1, 8), Paragraph(TRADEOFF, S_BODY),
+         h("6", "Known limitations"), *bullets(LIMITS),
+         Spacer(1, 10), try_it()]
     doc.build(s)
 
 
