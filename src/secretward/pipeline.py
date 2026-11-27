@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from . import dates, vault
+from .gate import ReleaseGate
 from .detect import AGE_PATTERNS, ID_TOKEN, sanitize_header, LABEL_RX, PRE_REL_RX, REL_RX, Ctx, _is_person, _trim_span, sanitize
 from .fields import classify, clean_field, harvest_value, hint_type
 from .gazetteer import Gazetteer
@@ -243,6 +244,8 @@ class Pipeline:
         self.counts = Counter()
         self.cluster_bands: dict = {}
         self.vaulted = 0
+        self.release_stats: dict = {}
+        self.hidden_loc: set = set()
 
     def over_time(self) -> bool:
         return time.monotonic() - self.t0 > TIME_BUDGET_S
@@ -570,6 +573,20 @@ class Pipeline:
                 self.hidden_loc.add(c)
                 self.counts["K_ANON_LOCATION_HIDDEN"] += 1
 
+        # what the release finally shows per patient: (gender, band, district or hidden)
+        def shown(c):
+            g, dist = info[c]
+            return (tuple(sorted(g)), self.cluster_bands.get(c), () if c in self.hidden_loc else tuple(sorted(dist)))
+        final = Counter(shown(c) for c in info)
+        sizes = [final[shown(c)] for c in info]
+        self.release_stats = {"patients": len(info), "k_target": k,
+                              "smallest_group": min(sizes) if sizes else 0,
+                              "patients_below_k": sum(1 for x in sizes if x < k),
+                              "patients_alone": sum(1 for x in sizes if x == 1),
+                              "widened": sum(1 for c in info if self.cluster_bands.get(c) and
+                                             self.cluster_bands[c][1] - self.cluster_bands[c][0] >= 19),
+                              "location_hidden": len(self.hidden_loc)}
+
     @staticmethod
     def _json_names(pairs) -> list[str]:
         """Join first/last name leaves that sit under the same parent into one name."""
@@ -804,6 +821,7 @@ class Pipeline:
     def write(self) -> list[dict]:
         san = self.out / "sanitized"
         files = []
+        gate = ReleaseGate((k for d in self.docs for u in d.units for k in u.ev.keys), self.gaz.latin_full)
         for d in self.docs:
             entry = {"input_sha256": d.sha}
             if d.kind != "quarantine" and self.over_time():
@@ -818,6 +836,14 @@ class Pipeline:
             try:
                 result = {"csv": self.sanitize_csv, "json": self.sanitize_json, "text": self.sanitize_text}[d.kind](d)
                 d.out_rel = self.out_name(d)
+                # release gate: last, independent check of content AND path against everything learned
+                result = gate.check_file(d.kind, result)
+                parts = d.out_rel.split("/")
+                for i, part in enumerate(parts):
+                    if gate.clean(part) != part:
+                        stem, dot, ext = part.rpartition(".") if i == len(parts) - 1 and "." in part else (part, "", "")
+                        parts[i] = f"FILE_{short_tag('/'.join(parts[:i + 1]))}" + (dot + ext if dot else "")
+                d.out_rel = "/".join(parts)
                 dest = san / d.out_rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 # open(..., newline="") works on every Python 3; Path.write_text(newline=)
@@ -830,4 +856,5 @@ class Pipeline:
                 entry.update(output=None, status="quarantined", reason="processing_error_" + type(exc).__name__)
                 self.vaulted += vault.store(self.inp / d.rel, d.sha, self.out)
             files.append(entry)
+        self.counts["RELEASE_GATE_REPAIRS"] += gate.repaired
         return files
